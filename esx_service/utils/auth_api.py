@@ -560,7 +560,6 @@ def _tenant_rm(name, remove_volumes=False):
         return error_info
 
     error_info, auth_mgr = get_auth_mgr_object()
-
     if error_info:
         return error_info
 

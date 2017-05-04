@@ -283,9 +283,9 @@ Uuid                                  Name      Description                 Defa
 11111111-1111-1111-1111-111111111111  _DEFAULT  This is a default vmgroup
 ```
 
-In multinode mode, VMs from different hosts can be a part of a vmgroup.
+In MultiNode mode, VMs from different hosts can be a part of a vmgroup.
 When in this mode, vmgroup which has member VMs in it cannot be directly deleted.
-First remove remove the VMs individually from the vmgroup using admin cli
+First remove the VMs individually from the vmgroup using admin cli
 on the same host on which the VM resides.
 Then remove the vmgroup.
 #### Help
@@ -360,7 +360,7 @@ Note: If the VMs have volumes attached (containers running), their membership ch
 they belong is not permitted. Make sure no volumes are attached.
 To do so:
 1. Get the list of containers running. (docker ps)
-2. If the container has any dvs volume mounted (docker inspect container_name), stop the container.
+2. If the container has any vDVS volume mounted (docker inspect container_name), stop the container.
 3. Ensure that the dvs volumes have status detached (docker volume inspect)
 
 #### Help
