@@ -569,8 +569,8 @@ def _tenant_rm(name, remove_volumes=False):
     if tenant.vms:
         logging.info("_tenant_rm. VMs in tenant are %s", tenant.vms)
 
-        # in multinode mode, we cannot find VM residing on another host
-        # so a gracefull way to admin know about the error
+        # in multinode mode, we cannot find VM residing on another host so stopping
+        # tenant deletion gracefully
         if auth_mgr.mode == auth_data.DBMode.MultiNode:
             error_info = generate_error_info(ErrorCode.TENANT_NOT_EMPTY, name)
             logging.error(error_info.msg)
