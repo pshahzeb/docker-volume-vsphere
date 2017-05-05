@@ -47,15 +47,13 @@ const (
 
 // VolumeDriver - VMDK driver struct
 type VolumeDriver struct {
-	useMockEsx bool
-	ops        vmdkops.VmdkOps
-	refCounts  *refcount.RefCountsMap
+	useMockEsx    bool
+	ops           vmdkops.VmdkOps
+	refCounts     *refcount.RefCountsMap
+	mountIDtoName map[string]string // map of mountID -> full volume name
 }
 
-var (
-	mountRoot         string
-	fullVolumeNameMap map[string]string // save full volume names to avoid trip to vmdkops service
-)
+var mountRoot string
 
 // NewVolumeDriver creates Driver which to real ESX (useMockEsx=False) or a mock
 func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName string) *VolumeDriver {
@@ -63,7 +61,6 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 
 	vmdkops.EsxPort = port
 	mountRoot = mountDir
-	fullVolumeNameMap = make(map[string]string)
 
 	if useMockEsx {
 		d = &VolumeDriver{
@@ -83,6 +80,7 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 		}
 	}
 
+	d.mountIDtoName = make(map[string]string)
 	d.refCounts.Init(d, mountDir, driverName)
 
 	log.WithFields(log.Fields{
@@ -218,16 +216,16 @@ func (d *VolumeDriver) UnmountVolume(name string) error {
 // private function that does the job of mounting volume in conjunction with refcounting
 func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 	// get volume metadata
-	status, err := d.ops.Get(r.Name)
+	volumeMeta, err := d.ops.Get(r.Name)
 
 	if err != nil {
 		return volume.Response{Err: err.Error()}
 	}
 
-	if plugin_utils.IsFullVolumeName(r.Name) != true {
-		datastore := plugin_utils.GetDatastore(r.Name, status)
-		r.Name = plugin_utils.GetFullVolumeName(r.Name, datastore)
-		fullVolumeNameMap[r.ID] = r.Name
+	r.Name, err = plugin_utils.GetFullVolumeName(r.Name, volumeMeta["datastore"].(string), d)
+	if err != nil {
+		log.Errorf("Unable to get full name for volume %s. err:%v", r.Name, err)
+		return volume.Response{Err: err.Error()}
 	}
 
 	// If the volume is already mounted , just increase the refcount.
@@ -241,7 +239,7 @@ func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 		return volume.Response{Mountpoint: getMountPoint(r.Name)}
 	}
 
-	if plugin_utils.CheckAlreadyMounted(r.Name, mountRoot) {
+	if plugin_utils.AlreadyMounted(r.Name, mountRoot) {
 		log.WithFields(log.Fields{"name": r.Name}).Info("Already mounted, skipping mount. ")
 		return volume.Response{Mountpoint: getMountPoint(r.Name)}
 	}
@@ -253,7 +251,7 @@ func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 		return volume.Response{Err: err.Error()}
 	}
 	// Check access type.
-	value, exists := status["access"].(string)
+	value, exists := volumeMeta["access"].(string)
 	if !exists {
 		msg := fmt.Sprintf("Invalid access type for %s, assuming read-write access.", r.Name)
 		log.WithFields(log.Fields{"name": r.Name, "error": msg}).Error("")
@@ -263,7 +261,7 @@ func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 	}
 
 	// Check file system type.
-	value, exists = status["fstype"].(string)
+	value, exists = volumeMeta["fstype"].(string)
 	if !exists {
 		msg := fmt.Sprintf("Invalid filesystem type for %s, assuming type as %s.",
 			r.Name, fstype)
@@ -477,12 +475,14 @@ func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 		return volume.Response{Err: ""}
 	}
 
-	if plugin_utils.IsFullVolumeName(r.Name) != true {
-		fullVolName := fullVolumeNameMap[r.ID]
-		if fullVolName == "" { // if ID not present in local map, do a get trip
-			status, _ := d.ops.Get(r.Name)
-			datastore := plugin_utils.GetDatastore(r.Name, status)
-			fullVolName = plugin_utils.GetFullVolumeName(r.Name, datastore)
+	if fullVolName, exist := d.mountIDtoName[r.ID]; exist {
+		r.Name = fullVolName
+		delete(d.mountIDtoName, r.ID) //cleanup the map
+	} else {
+		fullVolName, err := plugin_utils.GetFullVolumeName(r.Name, "", d)
+		if err != nil {
+			log.Errorf("Unable to get full name for volume %s. err:%v", r.Name, err)
+			return volume.Response{Err: err.Error()}
 		}
 		r.Name = fullVolName
 	}

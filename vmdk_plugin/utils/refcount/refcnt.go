@@ -94,9 +94,7 @@ const (
 	refCountDelayStartSec   = 2
 	refCountRetryAttempts   = 20
 
-	// consts for finding and parsing linux mount information
-	linuxMountsFile = "/proc/mounts"
-	photonDriver    = "photon"
+	photonDriver = "photon"
 )
 
 // info about individual volume ref counts and mount
@@ -315,8 +313,8 @@ func (r *RefCountsMap) Decr(vol string) (uint, error) {
 	return rc.count, nil
 }
 
-// check if volume with source as mount_source belongs to vsphere plugin
-func matchNameforVMDK(mount_source string) bool {
+// check if volume with source as mount_source belongs to vmdk plugin
+func isVMDKMount(mount_source string) bool {
 	managedPluginMountStart := "/var/lib/docker/plugins/"
 
 	// if plugin is used as a service
@@ -366,7 +364,7 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 	}
 
 	// use same datastore for all volumes with short names
-	datastore := ""
+	datastoreName := ""
 
 	log.Infof("Found %d running or paused containers", len(containers))
 	for _, ct := range containers {
@@ -387,20 +385,27 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 		log.Debugf("  Mounts for %v", ct.Names)
 		for _, mount := range containerJSONInfo.Mounts {
 			// check if the mount location belongs to vmdk plugin
-			if matchNameforVMDK(mount.Source) != true {
+			if isVMDKMount(mount.Source) != true {
 				continue
 			}
 			volname := mount.Name
-			if plugin_utils.IsFullVolumeName(volname) != true {
-				if datastore == "" {
-					volumeMeta, _ := d.GetVolume(volname)
-					datastore = plugin_utils.GetDatastore(volname, volumeMeta)
+			// gets hit once to retrieve the default datastore. datastoreName is reused henceforth
+			if datastoreName == "" {
+				datastoreName, err = plugin_utils.GetDatastore(volname, d)
+				if err != nil {
+					log.Errorf("Unable to get datastore for volume %s. err:%v", volname, err)
+					return err
 				}
-				volname = plugin_utils.GetFullVolumeName(volname, datastore)
-				r.Incr(volname)
-				log.Debugf("name=%v (driver=%s source=%s) (%v)",
-					mount.Name, mount.Driver, mount.Source, mount)
 			}
+
+			volname, err = plugin_utils.GetFullVolumeName(volname, datastoreName, d)
+			if err != nil {
+				log.Errorf("Unable to get full name for volume %s. err:%v", volname, err)
+				return err
+			}
+			r.Incr(volname)
+			log.Debugf("name=%v (driver=%s source=%s) (%v)",
+				mount.Name, mount.Driver, mount.Source, mount)
 		}
 	}
 

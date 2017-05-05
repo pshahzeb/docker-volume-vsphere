@@ -22,20 +22,22 @@ import (
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers"
 )
 
 const (
+	// consts for finding and parsing linux mount information
 	linuxMountsFile = "/proc/mounts"
 )
 
 // GetMountInfo - return a map of mounted volumes and devices
 func GetMountInfo(mountRoot string) (map[string]string, error) {
-	volumeMap := make(map[string]string)
+	volumeMountMap := make(map[string]string) //map [volume mount path] -> device
 	data, err := ioutil.ReadFile(linuxMountsFile)
 
 	if err != nil {
 		log.Errorf("Can't get info from %s (%v)", linuxMountsFile, err)
-		return volumeMap, err
+		return volumeMountMap, err
 	}
 
 	for _, line := range strings.Split(string(data), "\n") {
@@ -47,13 +49,13 @@ func GetMountInfo(mountRoot string) (map[string]string, error) {
 		if filepath.Dir(field[1]) != mountRoot {
 			continue
 		}
-		volumeMap[filepath.Base(field[1])] = field[0]
+		volumeMountMap[filepath.Base(field[1])] = field[0]
 	}
-	return volumeMap, nil
+	return volumeMountMap, nil
 }
 
-// CheckAlreadyMounted - check if volume is already mounted on the mountRoot
-func CheckAlreadyMounted(name string, mountRoot string) bool {
+// AlreadyMounted - check if volume is already mounted on the mountRoot
+func AlreadyMounted(name string, mountRoot string) bool {
 	volumeMap, err := GetMountInfo(mountRoot)
 
 	if err != nil {
@@ -68,18 +70,27 @@ func CheckAlreadyMounted(name string, mountRoot string) bool {
 
 // GetDatastore - get datastore from volume metadata
 // Note "datastore" key is defined in vmdkops service
-func GetDatastore(name string, volumeMeta map[string]interface{}) string {
-	datastore, _ := volumeMeta["datastore"].(string)
-	return datastore
+func GetDatastore(name string, d drivers.VolumeDriver) (string, error) {
+	volumeMeta, err := d.GetVolume(name)
+	if err != nil {
+		log.Errorf("Unable to get volume metadata %s (err: %v)", name, err)
+		return "", err
+	}
+	return volumeMeta["datastore"].(string), nil
 }
 
 // GetFullVolumeName - append datastore to the volume name
-func GetFullVolumeName(name string, datastore string) string {
-	s := []string{name, datastore}
-	return strings.Join(s, "@")
-}
+func GetFullVolumeName(name string, datastoreName string, d drivers.VolumeDriver) (string, error) {
+	if strings.ContainsAny(name, "@") {
+		return name, nil
+	}
+	if datastoreName != "" {
+		return strings.Join([]string{name, datastoreName}, "@"), nil
+	}
 
-// IsFullVolumeName - return if name is full volume name i.e. volume@datastore
-func IsFullVolumeName(name string) bool {
-	return strings.ContainsAny(name, "@")
+	datastoreName, err := GetDatastore(name, d)
+	if err != nil {
+		return "", err
+	}
+	return strings.Join([]string{name, datastoreName}, "@"), nil
 }

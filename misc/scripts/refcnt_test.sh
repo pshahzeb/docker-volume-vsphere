@@ -67,7 +67,7 @@ function check_files {
 }
 
 function check_recovery_record {
-    # restart generates some log.
+    # log contains refcounting attempts and after success logs summary.
     line=`tail -50 /var/log/docker-volume-vsphere.log | $GREP 'Volume name=' | $GREP 'mounted=true'`
     expected="count=$count mounted=true"
 
@@ -82,6 +82,7 @@ function check_recovery_record {
 function test_crash_recovery {
     timeout=$1
     echo "Checking recovery through docker kill"
+    # kill docker daemon forcefully
     pkill -9 dockerd
     until pids=$(pidof dockerd)
     do
@@ -116,6 +117,7 @@ fi
 echo "$(docker volume ls)"
 for i in `seq 1 $count`
 do
+  # run containers with restart flag so they restart after docker restart
   $DOCKER run -d --restart=always -v $vname:/v busybox sh -c "touch /v/file$i; sync ; \
       while true; do sleep $timeout; done"
 done
