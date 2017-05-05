@@ -73,8 +73,6 @@ package refcount
 
 import (
 	"fmt"
-	"io/ioutil"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -84,6 +82,7 @@ import (
 	"github.com/docker/engine-api/types"
 	"github.com/docker/engine-api/types/filters"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers"
+	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/plugin_utils"
 	"golang.org/x/net/context"
 )
 
@@ -119,9 +118,9 @@ type RefCountsMap struct {
 	refMap map[string]*refCount // Map of refCounts
 	mtx    *sync.RWMutex        // Synchronizes RefCountsMap ops
 
-	refcntInitSuccess bool // save refcounting success
-	isDirty           bool // flag to check reconciling has been interrupted
-	StateMtx *sync.Mutex   // (Exported) Synchronizes refcounting between mount/unmount and refcounting thread
+	refcntInitSuccess bool        // save refcounting success
+	isDirty           bool        // flag to check reconciling has been interrupted
+	StateMtx          *sync.Mutex // (Exported) Synchronizes refcounting between mount/unmount and refcounting thread
 }
 
 var (
@@ -366,6 +365,9 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 		return err
 	}
 
+	// use same datastore for all volumes with short names
+	datastore := ""
+
 	log.Infof("Found %d running or paused containers", len(containers))
 	for _, ct := range containers {
 
@@ -383,12 +385,20 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 			return err
 		}
 		log.Debugf("  Mounts for %v", ct.Names)
-
 		for _, mount := range containerJSONInfo.Mounts {
-			// check if the mount location belongs to vsphere plugin
-			if matchNameforVMDK(mount.Source) {
-				r.Incr(mount.Name)
-				log.Infof("  name=%v (driver=%s source=%s) (%v)",
+			// check if the mount location belongs to vmdk plugin
+			if matchNameforVMDK(mount.Source) != true {
+				continue
+			}
+			volname := mount.Name
+			if plugin_utils.IsFullVolumeName(volname) != true {
+				if datastore == "" {
+					volumeMeta, _ := d.GetVolume(volname)
+					datastore = plugin_utils.GetDatastore(volname, volumeMeta)
+				}
+				volname = plugin_utils.GetFullVolumeName(volname, datastore)
+				r.Incr(volname)
+				log.Debugf("name=%v (driver=%s source=%s) (%v)",
 					mount.Name, mount.Driver, mount.Source, mount)
 			}
 		}
@@ -407,7 +417,7 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 	// Check that refcounts and actual mount info from Linux match
 	// If they don't, unmount unneeded stuff, or yell if something is
 	// not mounted but should be (it's error. we should not get there)
-	r.getMountInfo()
+	r.updateRefMap()
 	r.syncMountsWithRefCounters(d)
 	// mark reconciling success so that further unmounts can instantly be processed
 	r.refcntInitSuccess = true
@@ -479,33 +489,24 @@ func (r *RefCountsMap) syncMountsWithRefCounters(d drivers.VolumeDriver) {
 	}
 }
 
-// scans /proc/mounts and updates refcount map witn mounted volumes
-func (r *RefCountsMap) getMountInfo() error {
+// updates refcount map with mounted volumes using mount info
+func (r *RefCountsMap) updateRefMap() error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	data, err := ioutil.ReadFile(linuxMountsFile)
+	volumeMap, err := plugin_utils.GetMountInfo(mountRoot)
+
 	if err != nil {
-		log.Errorf("Can't get info from %s (%v)", linuxMountsFile, err)
 		return err
 	}
 
-	for _, line := range strings.Split(string(data), "\n") {
-		field := strings.Fields(line)
-		if len(field) < 2 {
-			continue // skip empty line and lines too short to have our mount
-		}
-		// fields format: [/dev/sdb /mnt/vmdk/vol1 ext2 rw,relatime 0 0]
-		if filepath.Dir(field[1]) != mountRoot {
-			continue
-		}
-		volName := filepath.Base(field[1])
+	for volName, dev := range volumeMap {
 		refInfo := r.refMap[volName]
 		if refInfo == nil {
 			refInfo = newRefCount()
 		}
 		refInfo.mounted = true
-		refInfo.dev = field[0]
+		refInfo.dev = dev
 		r.refMap[volName] = refInfo
 		log.Debugf("Found '%s' in /proc/mount, ref=(%#v)", volName, refInfo)
 	}

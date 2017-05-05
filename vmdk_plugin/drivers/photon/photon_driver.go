@@ -38,6 +38,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/fs"
+	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/plugin_utils"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/refcount"
 	"github.com/vmware/photon-controller-go-sdk/photon"
 )
@@ -53,6 +54,8 @@ const (
 	capacityGB           = 1
 	fsTypeTag            = "Fs_Type"
 )
+
+var fullVolumeNameMap map[string]string // save full volume names to avoid trip to vmdkops service
 
 // VolumeDriver - Photon volume driver struct
 type VolumeDriver struct {
@@ -78,6 +81,8 @@ func (d *VolumeDriver) verifyTarget() error {
 
 // NewVolumeDriver - creates Driver, creates client for given target
 func NewVolumeDriver(targetURL string, projectID string, hostID string, mountDir string) *VolumeDriver {
+
+	fullVolumeNameMap = make(map[string]string)
 
 	d := &VolumeDriver{
 		target:  targetURL,
@@ -362,6 +367,19 @@ func (d *VolumeDriver) MountVolume(name string, fstype string, id string, isRead
 
 // private function that does the job of mounting volume in conjunction with refcounting
 func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
+	// get volume metadata
+	status, err := d.GetVolume(r.Name)
+
+	if err != nil {
+		return volume.Response{Err: err.Error()}
+	}
+
+	if plugin_utils.IsFullVolumeName(r.Name) != true {
+		datastore := plugin_utils.GetDatastore(r.Name, status)
+		r.Name = plugin_utils.GetFullVolumeName(r.Name, datastore)
+		fullVolumeNameMap[r.ID] = r.Name
+	}
+
 	// If the volume is already mounted , just increase the refcount.
 	// Note: for new keys, GO maps return zero value, so no need for if_exists.
 	refcnt := d.incrRefCount(r.Name) // save map traversal
@@ -373,12 +391,9 @@ func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 		return volume.Response{Mountpoint: d.getMountPoint(r.Name)}
 	}
 
-	// There can be redundant mounts till refcounts are properly initialized
-	// TODO: #1220
-	status, err := d.GetVolume(r.Name)
-	if err != nil {
-		d.decrRefCount(r.Name)
-		return volume.Response{Err: err.Error()}
+	if plugin_utils.CheckAlreadyMounted(r.Name, d.mountRoot) {
+		log.WithFields(log.Fields{"name": r.Name}).Info("Already mounted, skipping mount. ")
+		return volume.Response{Mountpoint: d.getMountPoint(r.Name)}
 	}
 
 	fstype, exists := status[fsTypeTag]
@@ -616,6 +631,16 @@ func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 		// until we succesfully populate the refcount map
 		d.refCounts.MarkDirty()
 		return volume.Response{Err: ""}
+	}
+
+	if plugin_utils.IsFullVolumeName(r.Name) != true {
+		fullVolName := fullVolumeNameMap[r.ID]
+		if fullVolName == "" { // if ID not present in local map, do a get trip
+			status, _ := d.GetVolume(r.Name)
+			datastore := plugin_utils.GetDatastore(r.Name, status)
+			fullVolName = plugin_utils.GetFullVolumeName(r.Name, datastore)
+		}
+		r.Name = fullVolName
 	}
 
 	// if refcount has been succcessful, Normal flow.
