@@ -274,6 +274,8 @@ func (r *RefCountsMap) GetVolumeNames() []string {
 		volumeList = append(volumeList, k)
 	}
 
+	// the list contains full volume names in format volume@datastore
+	// there can be volumes with same name on different datastores
 	return volumeList
 }
 
@@ -401,22 +403,14 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 			if isVMDKMount(mount.Source) != true {
 				continue
 			}
-			volname := mount.Name
-			// gets hit once to retrieve the default datastore. datastoreName is reused henceforth
-			if datastoreName == "" {
-				datastoreName, _, err = plugin_utils.GetDatastore(volname, d)
-				if err != nil {
-					log.Errorf("Unable to get datastore for volume %s. err:%v", volname, err)
-					return err
-				}
-			}
 
-			volname, _, err = plugin_utils.GetFullNameAndMeta(volname, datastoreName, d)
+			volumeInfo, err := plugin_utils.GetVolumeInfo(mount.Name, datastoreName, d)
 			if err != nil {
-				log.Errorf("Unable to get full name for volume %s. err:%v", volname, err)
+				log.Errorf("Unable to get volume info for volume %s. err:%v", mount.Name, err)
 				return err
 			}
-			r.Incr(volname)
+			datastoreName = volumeInfo.DatastoreName
+			r.Incr(volumeInfo.VolumeName)
 			log.Debugf("name=%v (driver=%s source=%s) (%v)",
 				mount.Name, mount.Driver, mount.Source, mount)
 		}

@@ -363,20 +363,21 @@ func (d *VolumeDriver) MountVolume(name string, fstype string, id string, isRead
 	return mountpoint, fs.MountWithID(mountpoint, fstype, id, isReadOnly)
 }
 
-//VolumesInRefMap - get list of volumes from refmap
+// VolumesInRefMap - get list of volumes names from refmap
+// names are in format volume@datastore
 func (d *VolumeDriver) VolumesInRefMap() []string {
 	return d.refCounts.GetVolumeNames()
 }
 
 // private function that does the job of mounting volume in conjunction with refcounting
 func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
-	volname, volumeMeta, err := plugin_utils.GetFullNameAndMeta(r.Name, "", d)
+	volumeInfo, err := plugin_utils.GetVolumeInfo(r.Name, "", d)
 	if err != nil {
-		log.Errorf("Unable to get full name for volume %s. err:%v", r.Name, err)
+		log.Errorf("Unable to get volume info for volume %s. err:%v", r.Name, err)
 		return volume.Response{Err: err.Error()}
 	}
-	r.Name = volname
-	d.mountIDtoName[r.ID] = volname
+	r.Name = volumeInfo.VolumeName
+	d.mountIDtoName[r.ID] = r.Name
 
 	// If the volume is already mounted , just increase the refcount.
 	// Note: for new keys, GO maps return zero value, so no need for if_exists.
@@ -395,8 +396,10 @@ func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 	}
 
 	// get volume metadata if required
+	volumeMeta := volumeInfo.VolumeMeta
 	if volumeMeta == nil {
 		if volumeMeta, err = d.GetVolume(r.Name); err != nil {
+			d.decrRefCount(r.Name)
 			return volume.Response{Err: err.Error()}
 		}
 	}
@@ -642,12 +645,12 @@ func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 		r.Name = fullVolName
 		delete(d.mountIDtoName, r.ID) //cleanup the map
 	} else {
-		fullVolName, _, err := plugin_utils.GetFullNameAndMeta(r.Name, "", d)
+		volumeInfo, err := plugin_utils.GetVolumeInfo(r.Name, "", d)
 		if err != nil {
-			log.Errorf("Unable to get full name for volume %s. err:%v", r.Name, err)
+			log.Errorf("Unable to get volume info for volume %s. err:%v", r.Name, err)
 			return volume.Response{Err: err.Error()}
 		}
-		r.Name = fullVolName
+		r.Name = volumeInfo.VolumeName
 	}
 
 	// if refcount has been succcessful, Normal flow.

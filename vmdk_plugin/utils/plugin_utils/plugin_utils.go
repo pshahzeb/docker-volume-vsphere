@@ -28,7 +28,18 @@ import (
 const (
 	// consts for finding and parsing linux mount information
 	linuxMountsFile = "/proc/mounts"
+
+	// index datastore from volume meta
+	// "datastore" key is defined in vmdkops service
+	datastoreKey = "datastore"
 )
+
+// VolumeInfo - Volume fullname, datastore and metadata
+type VolumeInfo struct {
+	VolumeName    string
+	DatastoreName string
+	VolumeMeta    map[string]interface{}
+}
 
 // GetMountInfo - return a map of mounted volumes and devices
 func GetMountInfo(mountRoot string) (map[string]string, error) {
@@ -68,18 +79,24 @@ func AlreadyMounted(name string, mountRoot string) bool {
 	return false
 }
 
-// GetDatastore - get datastore from volume metadata
-// Note "datastore" key is defined in vmdkops service
-func GetDatastore(name string, d drivers.VolumeDriver) (string, map[string]interface{}, error) {
-	volumeMeta, err := d.GetVolume(name)
-	if err != nil {
-		log.Errorf("Unable to get volume metadata %s (err: %v)", name, err)
-		return "", nil, err
-	}
-	return volumeMeta["datastore"].(string), volumeMeta, nil
+// JoinVolName - return a full name in format volume@datastore
+func JoinVolName(volName string, datastoreName string) string {
+	return strings.Join([]string{volName, datastoreName}, "@")
 }
 
-// GetNameFromRefmap - get names from refmap
+// SplitVolName - split a volume name into short name and datastore
+func SplitVolName(fullVolName string) []string {
+	return strings.Split(fullVolName, "@")
+}
+
+// IsFullVolName - Check if volume name is full volume name
+func IsFullVolName(volName string) bool {
+	return strings.ContainsAny(volName, "@")
+}
+
+// GetNameFromRefmap - traverse the name entries in refmap
+// and if a single entry with volName match is found(no collision),
+// use that name as full volume name
 func GetNameFromRefmap(volName string, d drivers.VolumeDriver) string {
 	volumeNameList := d.VolumesInRefMap()
 
@@ -87,7 +104,7 @@ func GetNameFromRefmap(volName string, d drivers.VolumeDriver) string {
 	fullname := ""
 
 	for _, name := range volumeNameList {
-		refVolName := strings.Split(name, "@")[0]
+		refVolName := SplitVolName(name)[0]
 		if refVolName != volName {
 			continue
 		}
@@ -101,23 +118,30 @@ func GetNameFromRefmap(volName string, d drivers.VolumeDriver) string {
 	return fullname
 }
 
-// GetFullNameAndMeta - return a qualified volume and metadata(if a get trip was made)
-func GetFullNameAndMeta(name string, datastoreName string, d drivers.VolumeDriver) (string, map[string]interface{}, error) {
-	if strings.ContainsAny(name, "@") {
-		return name, nil, nil
+// GetVolumeInfo - return VolumeInfo which a qualified volume name,
+// datastore name volume metadata if retrieved
+func GetVolumeInfo(name string, datastoreName string, d drivers.VolumeDriver) (*VolumeInfo, error) {
+	// if fullname already, return
+	if IsFullVolName(name) {
+		return &VolumeInfo{name, "", nil}, nil
 	}
+
+	// if datastore name is provided, append and return
 	if datastoreName != "" {
-		return strings.Join([]string{name, datastoreName}, "@"), nil, nil
+		return &VolumeInfo{JoinVolName(name, datastoreName), datastoreName, nil}, nil
 	}
 
 	// find full volume names using refmap if possible
 	if fullVolumeName := GetNameFromRefmap(name, d); fullVolumeName != "" {
-		return fullVolumeName, nil, nil
+		return &VolumeInfo{fullVolumeName, "", nil}, nil
 	}
 
-	datastoreName, volumeMeta, err := GetDatastore(name, d)
+	// Do a get trip to esx and construct full name
+	volumeMeta, err := d.GetVolume(name)
 	if err != nil {
-		return "", nil, err
+		log.Errorf("Unable to get volume metadata %s (err: %v)", name, err)
+		return nil, err
 	}
-	return strings.Join([]string{name, datastoreName}, "@"), volumeMeta, nil
+	datastoreName = volumeMeta[datastoreKey].(string)
+	return &VolumeInfo{JoinVolName(name, datastoreName), datastoreName, volumeMeta}, nil
 }
