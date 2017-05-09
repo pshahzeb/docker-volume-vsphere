@@ -70,27 +70,54 @@ func AlreadyMounted(name string, mountRoot string) bool {
 
 // GetDatastore - get datastore from volume metadata
 // Note "datastore" key is defined in vmdkops service
-func GetDatastore(name string, d drivers.VolumeDriver) (string, error) {
+func GetDatastore(name string, d drivers.VolumeDriver) (string, map[string]interface{}, error) {
 	volumeMeta, err := d.GetVolume(name)
 	if err != nil {
 		log.Errorf("Unable to get volume metadata %s (err: %v)", name, err)
-		return "", err
+		return "", nil, err
 	}
-	return volumeMeta["datastore"].(string), nil
+	return volumeMeta["datastore"].(string), volumeMeta, nil
 }
 
-// GetFullVolumeName - append datastore to the volume name
-func GetFullVolumeName(name string, datastoreName string, d drivers.VolumeDriver) (string, error) {
+// GetNameFromRefmap - get names from refmap
+func GetNameFromRefmap(volName string, d drivers.VolumeDriver) string {
+	volumeNameList := d.VolumesInRefMap()
+
+	count := 0
+	fullname := ""
+
+	for _, name := range volumeNameList {
+		refVolName := strings.Split(name, "@")[0]
+		if refVolName != volName {
+			continue
+		}
+		// if there are collisions, return
+		if count > 0 {
+			return ""
+		}
+		count++
+		fullname = name
+	}
+	return fullname
+}
+
+// GetFullNameAndMeta - return a qualified volume and metadata(if a get trip was made)
+func GetFullNameAndMeta(name string, datastoreName string, d drivers.VolumeDriver) (string, map[string]interface{}, error) {
 	if strings.ContainsAny(name, "@") {
-		return name, nil
+		return name, nil, nil
 	}
 	if datastoreName != "" {
-		return strings.Join([]string{name, datastoreName}, "@"), nil
+		return strings.Join([]string{name, datastoreName}, "@"), nil, nil
 	}
 
-	datastoreName, err := GetDatastore(name, d)
-	if err != nil {
-		return "", err
+	// find full volume names using refmap if possible
+	if fullVolumeName := GetNameFromRefmap(name, d); fullVolumeName != "" {
+		return fullVolumeName, nil, nil
 	}
-	return strings.Join([]string{name, datastoreName}, "@"), nil
+
+	datastoreName, volumeMeta, err := GetDatastore(name, d)
+	if err != nil {
+		return "", nil, err
+	}
+	return strings.Join([]string{name, datastoreName}, "@"), volumeMeta, nil
 }

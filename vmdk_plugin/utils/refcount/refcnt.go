@@ -264,6 +264,19 @@ func (r *RefCountsMap) GetCount(vol string) uint {
 	return rc.count
 }
 
+//GetVolumeNames - return volume names of entries in refmap
+func (r *RefCountsMap) GetVolumeNames() []string {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+	var volumeList []string
+
+	for k := range r.refMap {
+		volumeList = append(volumeList, k)
+	}
+
+	return volumeList
+}
+
 // Incr refCount for the volume vol. Creates new entry if needed.
 func (r *RefCountsMap) Incr(vol string) uint {
 	// Locks the RefCountsMap
@@ -391,14 +404,14 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 			volname := mount.Name
 			// gets hit once to retrieve the default datastore. datastoreName is reused henceforth
 			if datastoreName == "" {
-				datastoreName, err = plugin_utils.GetDatastore(volname, d)
+				datastoreName, _, err = plugin_utils.GetDatastore(volname, d)
 				if err != nil {
 					log.Errorf("Unable to get datastore for volume %s. err:%v", volname, err)
 					return err
 				}
 			}
 
-			volname, err = plugin_utils.GetFullVolumeName(volname, datastoreName, d)
+			volname, _, err = plugin_utils.GetFullNameAndMeta(volname, datastoreName, d)
 			if err != nil {
 				log.Errorf("Unable to get full name for volume %s. err:%v", volname, err)
 				return err

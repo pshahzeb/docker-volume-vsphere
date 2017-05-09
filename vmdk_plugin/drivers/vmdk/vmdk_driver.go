@@ -92,6 +92,11 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 	return d
 }
 
+//VolumesInRefMap - get list of volumes from refmap
+func (d *VolumeDriver) VolumesInRefMap() []string {
+	return d.refCounts.GetVolumeNames()
+}
+
 // In following three operations on refcount, if refcount
 // map hasn't been initialized, return 1 to prevent detach and remove.
 
@@ -215,18 +220,13 @@ func (d *VolumeDriver) UnmountVolume(name string) error {
 
 // private function that does the job of mounting volume in conjunction with refcounting
 func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
-	// get volume metadata
-	volumeMeta, err := d.ops.Get(r.Name)
-
-	if err != nil {
-		return volume.Response{Err: err.Error()}
-	}
-
-	r.Name, err = plugin_utils.GetFullVolumeName(r.Name, volumeMeta["datastore"].(string), d)
+	volname, volumeMeta, err := plugin_utils.GetFullNameAndMeta(r.Name, "", d)
 	if err != nil {
 		log.Errorf("Unable to get full name for volume %s. err:%v", r.Name, err)
 		return volume.Response{Err: err.Error()}
 	}
+	r.Name = volname
+	d.mountIDtoName[r.ID] = volname
 
 	// If the volume is already mounted , just increase the refcount.
 	// Note: for new keys, GO maps return zero value, so no need for if_exists.
@@ -242,6 +242,13 @@ func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 	if plugin_utils.AlreadyMounted(r.Name, mountRoot) {
 		log.WithFields(log.Fields{"name": r.Name}).Info("Already mounted, skipping mount. ")
 		return volume.Response{Mountpoint: getMountPoint(r.Name)}
+	}
+
+	// get volume metadata if required
+	if volumeMeta == nil {
+		if volumeMeta, err = d.ops.Get(r.Name); err != nil {
+			return volume.Response{Err: err.Error()}
+		}
 	}
 
 	fstype := fs.FstypeDefault
@@ -479,7 +486,7 @@ func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 		r.Name = fullVolName
 		delete(d.mountIDtoName, r.ID) //cleanup the map
 	} else {
-		fullVolName, err := plugin_utils.GetFullVolumeName(r.Name, "", d)
+		fullVolName, _, err := plugin_utils.GetFullNameAndMeta(r.Name, "", d)
 		if err != nil {
 			log.Errorf("Unable to get full name for volume %s. err:%v", r.Name, err)
 			return volume.Response{Err: err.Error()}
