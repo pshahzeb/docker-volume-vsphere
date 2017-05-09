@@ -404,6 +404,15 @@ def cleanup_tenant(name):
     auth_api._tenant_rm(name=name,
                         remove_volumes=True)
 
+def cleanup_tenant(name):
+    error_info, vms = auth_api._tenant_vm_ls(name)
+    if vms:
+        vm_names = [vm_name for (_, vm_name) in vms]
+        auth_api._tenant_vm_rm(name=name,
+                               vm_list=vm_names)
+    auth_api._tenant_rm(name=name,
+                        remove_volumes=True)
+
 class VmdkAttachDetachTestCase(unittest.TestCase):
     """ Unit test for VMDK Attach and Detach ops """
 
