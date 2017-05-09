@@ -569,8 +569,8 @@ class TestTenant(unittest.TestCase):
 
     def cleanup(self):
         # cleanup existing tenants
-        vmdk_ops_test.cleanup_tenant(self.tenant1_name)
-        vmdk_ops_test.cleanup_tenant(self.tenant1_new_name)
+        test_utils.cleanup_tenant(self.tenant1_name)
+        test_utils.cleanup_tenant(self.tenant1_new_name)
 
         # remove VM
         si = vmdk_ops.get_si()
