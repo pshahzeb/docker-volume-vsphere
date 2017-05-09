@@ -395,6 +395,15 @@ class ValidationTestCase(unittest.TestCase):
                 vmdk_ops.validate_opts(opts, self.path)
 
 
+def cleanup_tenant(name):
+    error_info, vms = auth_api._tenant_vm_ls(name)
+    if vms:
+        vm_names = [vm_name for (_, vm_name) in vms]
+        auth_api._tenant_vm_rm(name=name,
+                               vm_list=vm_names)
+    auth_api._tenant_rm(name=name,
+                        remove_volumes=True)
+
 class VmdkAttachDetachTestCase(unittest.TestCase):
     """ Unit test for VMDK Attach and Detach ops """
 
@@ -737,18 +746,10 @@ class VmdkTenantTestCase(unittest.TestCase):
                     logging.debug("cleanup: remove volume %s", vmdk_path)
                     vmdk_ops.removeVMDK(vmdk_path)
 
-        # cleanup existing tenant
-        error_info = auth_api._tenant_rm(
-                                         name=self.tenant1_name,
-                                         remove_volumes=True)
-
-        error_info = auth_api._tenant_rm(
-                                         name=self.tenant1_new_name,
-                                         remove_volumes=True)
-
-        error_info = auth_api._tenant_rm(
-                                         name=self.tenant2_name,
-                                         remove_volumes=True)
+        # cleanup existing tenants
+        cleanup_tenant(self.tenant1_name)
+        cleanup_tenant(self.tenant1_new_name)
+        cleanup_tenant(self.tenant2_name)
 
         # remove VM
         si = vmdk_ops.get_si()
