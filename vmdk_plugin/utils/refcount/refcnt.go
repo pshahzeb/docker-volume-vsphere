@@ -264,7 +264,7 @@ func (r *RefCountsMap) GetCount(vol string) uint {
 	return rc.count
 }
 
-//GetVolumeNames - return volume names of entries in refmap
+// GetVolumeNames - return fully qualified volume names from refMap
 func (r *RefCountsMap) GetVolumeNames() []string {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()

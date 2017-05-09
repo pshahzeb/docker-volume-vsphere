@@ -118,8 +118,9 @@ func GetNameFromRefmap(volName string, d drivers.VolumeDriver) string {
 	return fullname
 }
 
-// GetVolumeInfo - return VolumeInfo which a qualified volume name,
-// datastore name volume metadata if retrieved
+// GetVolumeInfo - return VolumeInfo with a qualified volume name.
+// Optionally returns datastore and volume metadata if retrieved from ESX.
+// If Volume Metadata is nil then caller can use getVolume()
 func GetVolumeInfo(name string, datastoreName string, d drivers.VolumeDriver) (*VolumeInfo, error) {
 	// if fullname already, return
 	if IsFullVolName(name) {
