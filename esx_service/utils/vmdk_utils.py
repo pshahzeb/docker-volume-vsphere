@@ -64,6 +64,9 @@ LSOF_CMD = "/bin/vmkvsitools lsof"
 VMDK_RETRY_COUNT = 5
 VMDK_RETRY_SLEEP = 1
 
+# root for all the volumes
+VOLUME_ROOT = "/vmfs/volumes/"
+
 # For managing resource locks.
 lockManager = threadutils.LockManager()
 
@@ -348,9 +351,14 @@ def find_dvs_volume(dev):
     datastore = datastore[1:]
     disk_path = disk_path.lstrip()
 
-    if disk_path.startswith(vmdk_ops.DOCK_VOLS_DIR):
-        # returning the vmdk path for dvs volume
-        return os.path.join("/vmfs/volumes/", datastore, disk_path)
+    # find the dockvols dir on current datastore and resolve symlinks if any
+    dvol_dir_path = os.path.realpath(os.path.join(VOLUME_ROOT,
+                                                  datastore, vmdk_ops.DOCK_VOLS_DIR))
+    dvol_dir = os.path.basename(dvol_dir_path)
+
+    if disk_path.startswith(dvol_dir):
+        # returning the vmdk path for vDVS volume
+        return os.path.join(VOLUME_ROOT, datastore, disk_path)
 
     return None
 
