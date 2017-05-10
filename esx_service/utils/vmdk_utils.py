@@ -336,7 +336,7 @@ def get_vm_config_path(vm_name):
 
 def find_dvs_volume(dev):
     """
-    If the @param dev is a dvs managed volume, return its vmdk path
+    If the @param dev (type is vim.vm.device) a vDVS managed volume, return its vmdk path
     """
     # if device is not a virtual disk, skip this device
     if type(dev) != vim.vm.device.VirtualDisk:
@@ -345,20 +345,20 @@ def find_dvs_volume(dev):
     # Filename format is as follows:
     # "[<datastore name>] <parent-directory>/tenant/<vmdk-descriptor-name>"
     # Trim the datastore name and keep disk path.
-    datastore, disk_path = dev.backing.fileName.rsplit("]", 1)
+    datastore_name, disk_path = dev.backing.fileName.rsplit("]", 1)
     logging.info("backing disk name is %s", disk_path)
     # name formatting to remove unwanted characters
-    datastore = datastore[1:]
+    datastore_name = datastore_name[1:]
     disk_path = disk_path.lstrip()
 
     # find the dockvols dir on current datastore and resolve symlinks if any
     dvol_dir_path = os.path.realpath(os.path.join(VOLUME_ROOT,
-                                                  datastore, vmdk_ops.DOCK_VOLS_DIR))
+                                                  datastore_name, vmdk_ops.DOCK_VOLS_DIR))
     dvol_dir = os.path.basename(dvol_dir_path)
 
     if disk_path.startswith(dvol_dir):
         # returning the vmdk path for vDVS volume
-        return os.path.join(VOLUME_ROOT, datastore, disk_path)
+        return os.path.join(VOLUME_ROOT, datastore_name, disk_path)
 
     return None
 
