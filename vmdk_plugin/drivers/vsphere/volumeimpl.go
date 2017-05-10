@@ -27,6 +27,7 @@ type VolumeImpl interface {
 	Remove(r volume.Request) volume.Response
 	Path(r volume.Request) volume.Response
 	List() ([]*volume.Volume, error)
-	IsKnownDS(string) boolean
-	GetMountPoint(volumeName string) string
+	IsKnownDS(string) bool
+	GetMountPoint(string) string
+	IsMounted(string) bool
 }

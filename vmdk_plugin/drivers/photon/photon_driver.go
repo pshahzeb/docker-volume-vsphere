@@ -390,7 +390,7 @@ func (d *VolumeDriver) processMount(r volume.MountRequest) volume.Response {
 		return volume.Response{Mountpoint: d.getMountPoint(r.Name)}
 	}
 
-	if plugin_utils.AlreadyMounted(r.Name, d.mountRoot) {
+	if plugin_utils.IsMounted(r.Name, d.mountRoot) {
 		log.WithFields(log.Fields{"name": r.Name}).Info("Already mounted, skipping mount. ")
 		return volume.Response{Mountpoint: d.getMountPoint(r.Name)}
 	}

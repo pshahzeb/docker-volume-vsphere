@@ -30,7 +30,6 @@ import (
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/vmdk"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/network"
-	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/refcount"
 )
 
 const (
@@ -44,6 +43,10 @@ type VolumeDriver struct {
 	blkVol     *VolumeImpl
 	fileVol    *VolumeImpl
 	refCounts  *refcount.RefCountsMap
+}
+
+func (d *VolumeDriver) getDSLabel(name string) string {
+
 }
 
 func (d *VolumeDriver) getVolumeImpl(name string) VolumeImpl {
@@ -64,7 +67,7 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 	d.blkVol = vmdk.Init(*port, *useMockEsx, mountRoot, configFile)
 	d.fileVol = network.Init(*port, *useMockEsx, mountRoot, configFile)
 
-	d.refCounts = refcount.NewRefCountsMap()
+	refCounts :=  refcount.NewRefCountsMap()
 	d.refCounts.Init(d, mountDir, driverName)
 
 	return d
@@ -104,7 +107,7 @@ func (d *VolumeDriver) List(r volume.Request) volume.Response {
 // Create - create a volume.
 func (d *VolumeDriver) Create(r volume.Request) volume.Response {
 	// For file type volume the network driver handles any
-	// addition opts that specify the exported fs (TBD) to
+	// addition opts that specify the exported fs to
 	// create the volume
 	if type, ok := r.Options[volType]; ok == true {
 		if type == fileVol {
@@ -130,81 +133,105 @@ func (d *VolumeDriver) Remove(r volume.Request) volume.Response {
 		log.Error(msg)
 		return volume.Response{Err: msg}
 	}
-	dslabel := d.getDSLabel(r.Name)
-	// Netowrk volumes must always be qualified by the share name
-	if dslabel != "" and d.fileVol.IsKnownDS(dslabel) {
-		return d.fileVol.Remove(r)
-	}
-	return d.blkVol.Remove(r)
+	volImpl := d.getVolumeImpl(r.Name)
+	return volImpl.Remove(r)
 }
 
 // Path - give docker a reminder of the volume mount path
 func (d *VolumeDriver) Path(r volume.Request) volume.Response {
-	dslabel := d.getDSLabel(r.Name)
-	// Netowrk volumes must always be qualified by the share name
-	if dslabel != "" and d.fileVol.IsKnownDS(dslabel) {
-		return d.fileVol.Path(r)
-	}
-	return d.blkVol.Path(r)
+	volImpl := d.getVolumeImpl(r.Name)
+	return volImpl.Remove(r)
 }
 
 // Mount - Provide a volume to docker container - called once per container start.
 func (d *VolumeDriver) Mount(r volume.MountRequest) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Mounting volume ")
 
-	// If the volume is already mounted , just increase the refcount.
-	//
-	// Note: We are deliberately incrementing refcount first, before trying
-	// to do anything else. If Mount fails, Docker will send Unmount request,
-	// and we will happily decrement the refcount there, and will fail the unmount
-	// since the volume will have been never mounted.
+	volImpl := d.getVolumeImpl(r.Name)
+
+	// lock the state
+	d.refCounts.StateMtx.Lock()
+	defer d.refCounts.StateMtx.Unlock()
+
+	// Checked by refcounting thread until refmap initialized
+	d.refCounts.MarkDirty()
+
+	// Get the full name for the given volume
+	volumeInfo, err := plugin_utils.GetVolumeInfo(r.Name, "", d)
+	if err != nil {
+		log.Errorf("Unable to get volume info for volume %s. err:%v", r.Name, err)
+		return volume.Response{Err: err.Error()}
+	}
+	fname = volumeInfo.VolumeName
+	d.mountIDtoName[r.ID] = fname
+
+	// If the volume is already mounted , increase the refcount.
 	// Note: for new keys, GO maps return zero value, so no need for if_exists.
-
-	refcnt := d.incrRefCount(r.Name) // save map traversal
-	log.Debugf("volume name=%s refcnt=%d", r.Name, refcnt)
-	if refcnt > 1 {
+	refcnt := d.incrRefCount(fname) // save map traversal
+	log.Debugf("volume name=%s refcnt=%d", fname, refcnt)
+	if refcnt > 1 || volImpl.IsMounted(fname) {
 		log.WithFields(
-			log.Fields{"name": r.Name, "refcount": refcnt},
+			log.Fields{"name": fname, "refcount": refcnt},
 		).Info("Already mounted, skipping mount. ")
-		return volume.Response{Mountpoint: getMountPoint(r.Name)}
+		return volume.Response{Mountpoint: GetMountPoint(fname)}
 	}
 
-	response := volume.Response{Mountpoint: mountpoint}
-	if response.Err != nil {
-		d.decrRefCount(r.Name)
+	response := volImpl.Mount(r)
+	if response.Err != "" {
+		d.decrRefCount(fname)
+		d.refCounts.ClearDirty()
 	}
-
-	dslabel := d.getDSLabel(r.Name)
-	// Netowrk volumes must always be qualified by the share name
-	if dslabel != "" and d.fileVol.IsKnownDS(dslabel) {
-		return d.fileVol.Path(r)
-	}
-	return d.blkVol.Path(r)
-	return response
+	return response	
 }
 
 // Unmount request from Docker. If mount refcount is drop to 0.
 // Unmount and detach from VM
 func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Unmounting Volume ")
+	volImpl := d.getVolumeImpl(r.Name)
+
+	// lock the state
+	d.refCounts.StateMtx.Lock()
+	defer d.refCounts.StateMtx.Unlock()
+
+	if d.refCounts.GetInitSuccess() != true {
+		// if refcounting hasn't been succesful,
+		// no refcounting, no unmount. All unmounts are delayed
+		// until we succesfully populate the refcount map
+		d.refCounts.MarkDirty()
+		return volume.Response{Err: ""}
+	}
+
+	fname, exist := d.mountIDtoName[r.ID]
+	if exist {
+		delete(d.mountIDtoName, r.ID) //cleanup the map
+	} else {
+		volumeInfo, err := plugin_utils.GetVolumeInfo(r.Name, "", d)
+		if err != nil {
+			log.Errorf("Unable to get volume info for volume %s. err:%v", r.Name, err)
+			return volume.Response{Err: err.Error()}
+		}
+		fname = volumeInfo.VolumeName
+	}
+
+	// if refcount has been succcessful, Normal flow
 	// if the volume is still used by other containers, just return OK
-	refcnt, err := d.decrRefCount(r.Name)
+	refcnt, err := d.decrRefCount(fname)
 	if err != nil {
 		// something went wrong - yell, but still try to unmount
 		log.WithFields(
-			log.Fields{"name": r.Name, "refcount": refcnt},
+			log.Fields{"name": fname, "refcount": refcnt},
 		).Error("Refcount error - still trying to unmount...")
 	}
-
-	log.Debugf("volume name=%s refcnt=%d", r.Name, refcnt)
+	log.Debugf("volume name=%s refcnt=%d", fname, refcnt)
 	if refcnt >= 1 {
 		log.WithFields(
-			log.Fields{"name": r.Name, "refcount": refcnt},
+			log.Fields{"name": fname, "refcount": refcnt},
 		).Info("Still in use, skipping unmount request. ")
 		return volume.Response{Err: ""}
 	}
 
-	return volume.Response{Err: ""}
+	return volImpl.Umount(volume.UnmountRequest{Name: fname})
 }
 
 // Capabilities - Report plugin scope to Docker

@@ -66,7 +66,7 @@ func GetMountInfo(mountRoot string) (map[string]string, error) {
 }
 
 // AlreadyMounted - check if volume is already mounted on the mountRoot
-func AlreadyMounted(name string, mountRoot string) bool {
+func IsMounted(name string, mountRoot string) bool {
 	volumeMap, err := GetMountInfo(mountRoot)
 
 	if err != nil {
@@ -94,10 +94,10 @@ func IsFullVolName(volName string) bool {
 	return strings.ContainsAny(volName, "@")
 }
 
-// GetNameFromRefmap - traverse the name entries in refmap
+// getNameFromRefmap - traverse the name entries in refmap
 // and if a single entry with volName match is found(no collision),
 // use that name as full volume name
-func GetNameFromRefmap(volName string, d drivers.VolumeDriver) string {
+func getNameFromRefmap(volName string, d drivers.VolumeDriver) string {
 	volumeNameList := d.VolumesInRefMap()
 
 	count := 0
@@ -133,7 +133,7 @@ func GetVolumeInfo(name string, datastoreName string, d drivers.VolumeDriver) (*
 	}
 
 	// find full volume names using refmap if possible
-	if fullVolumeName := GetNameFromRefmap(name, d); fullVolumeName != "" {
+	if fullVolumeName := getNameFromRefmap(name, d); fullVolumeName != "" {
 		return &VolumeInfo{fullVolumeName, "", nil}, nil
 	}
 

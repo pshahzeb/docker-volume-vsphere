@@ -165,11 +165,19 @@ func (r *RefCountsMap) GetInitSuccess() bool {
 	return r.refcntInitSuccess
 }
 
-// dirty the background refcount process
-// this flag is marked dirty from the driver
-// caller acquires lock on state as appropriate
-func (r *RefCountsMap) MarkDirty() {
+// SetDirty sets the refMap dirty flag to notify
+// a mount or unmount had happened in parallel to
+// a rescan process.
+func (r *RefCountsMap) SetDirty() {
 	r.isDirty = true
+}
+
+// ClearDirty resets the refMap dirty flag to notify
+// a mount or unmount had happened in parallel to
+// a rescan process but failed hence leaving the
+// refMap unchanged.
+func (r *RefCountsMap) ClearDirty() {
+	r.isDirty = false
 }
 
 // tries to calculate refCounts for dvs volumes. If failed, triggers a timer
