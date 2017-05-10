@@ -56,7 +56,7 @@ type VolumeDriver struct {
 var mountRoot string
 
 // NewVolumeDriver creates Driver which to real ESX (useMockEsx=False) or a mock
-func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName string) *VolumeDriver {
+func Init(port int, useMockEsx bool, mountDir string, config string) *VolumeDriver {
 	var d *VolumeDriver
 
 	vmdkops.EsxPort = port
@@ -66,7 +66,6 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 		d = &VolumeDriver{
 			useMockEsx: true,
 			ops:        vmdkops.VmdkOps{Cmd: vmdkops.MockVmdkCmd{}},
-			refCounts:  refcount.NewRefCountsMap(),
 		}
 	} else {
 		d = &VolumeDriver{
@@ -76,13 +75,11 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 					Mtx: &sync.Mutex{},
 				},
 			},
-			refCounts: refcount.NewRefCountsMap(),
 		}
 	}
 
 	d.mountIDtoName = make(map[string]string)
 	d.refCounts.Init(d, mountDir, driverName)
-
 	log.WithFields(log.Fields{
 		"version":  version,
 		"port":     vmdkops.EsxPort,
@@ -143,10 +140,10 @@ func (d *VolumeDriver) Get(r volume.Request) volume.Response {
 }
 
 // List volumes known to the driver
-func (d *VolumeDriver) List(r volume.Request) volume.Response {
+func (d *VolumeDriver) List() ([]*volume.Volume, error) {
 	volumes, err := d.ops.List()
 	if err != nil {
-		return volume.Response{Err: err.Error()}
+		return nil, volume.Response{Err: err.Error()}
 	}
 	responseVolumes := make([]*volume.Volume, 0, len(volumes))
 	for _, vol := range volumes {
@@ -154,7 +151,7 @@ func (d *VolumeDriver) List(r volume.Request) volume.Response {
 		responseVol := volume.Volume{Name: vol.Name, Mountpoint: mountpoint}
 		responseVolumes = append(responseVolumes, &responseVol)
 	}
-	return volume.Response{Volumes: responseVolumes}
+	return responseVolumes, nil
 }
 
 // GetVolume - return volume meta-data.
@@ -422,14 +419,6 @@ func (d *VolumeDriver) Create(r volume.Request) volume.Response {
 func (d *VolumeDriver) Remove(r volume.Request) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Removing volume ")
 
-	// Docker is supposed to block 'remove' command if the volume is used. Verify.
-	if d.getRefCount(r.Name) != 0 {
-		msg := fmt.Sprintf("Remove failure - volume is still mounted. "+
-			" volume=%s, refcount=%d", r.Name, d.getRefCount(r.Name))
-		log.Error(msg)
-		return volume.Response{Err: msg}
-	}
-
 	err := d.ops.Remove(r.Name, r.Options)
 	if err != nil {
 		log.WithFields(
@@ -454,7 +443,7 @@ func (d *VolumeDriver) Path(r volume.Request) volume.Response {
 // As long as the refCountsMap is protected is unnecessary to do any locking
 // at this level during create/mount/umount/remove.
 //
-func (d *VolumeDriver) Mount(r volume.MountRequest) volume.Response {
+func (d *VolumeDriver) Mount(r volume.MountRequest) (string, error) {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Mounting volume ")
 
 	// lock the state
@@ -523,9 +512,4 @@ func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 		return volume.Response{Err: err.Error()}
 	}
 	return volume.Response{Err: ""}
-}
-
-// Capabilities - Report plugin scope to Docker
-func (d *VolumeDriver) Capabilities(r volume.Request) volume.Response {
-	return volume.Response{Capabilities: volume.Capability{Scope: "global"}}
 }

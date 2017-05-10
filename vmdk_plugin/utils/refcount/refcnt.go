@@ -109,6 +109,9 @@ type refCount struct {
 	// Volume is mounted from this device. Used on recovery only , for info
 	// purposes. Value is empty during normal operation
 	dev string
+
+	// Type of backend for this volume
+	type string
 }
 
 // RefCountsMap struct

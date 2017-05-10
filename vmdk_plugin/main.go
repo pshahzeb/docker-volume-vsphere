@@ -178,7 +178,7 @@ func main() {
 		}
 		log.WithFields(log.Fields{"port": *port}).Info("Plugin options - ")
 
-		driver = vmdk.NewVolumeDriver(*port, *useMockEsx, mountRoot, *driverName)
+		driver = vsphere.NewVolumeDriver(*port, *useMockEsx, mountRoot, *driverName, *configFile)
 	} else {
 		log.Warning("Unknown driver or invalid/missing driver options, exiting - ", *driverName)
 		os.Exit(1)
