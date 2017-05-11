@@ -14,7 +14,7 @@
 
 package vsphere
 
-"github.com/docker/go-plugins-helpers/volume"
+import "github.com/docker/go-plugins-helpers/volume"
 
 // VolumeDriver interface used by the refcountedVolume module to handle
 // recovery mounts/unmounts.

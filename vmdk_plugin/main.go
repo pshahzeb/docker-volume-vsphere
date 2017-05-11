@@ -179,6 +179,10 @@ func main() {
 		log.WithFields(log.Fields{"port": *port}).Info("Plugin options - ")
 
 		driver = vsphere.NewVolumeDriver(*port, *useMockEsx, mountRoot, *driverName, *configFile)
+		if driver == nil {
+			log.Warning("Failed to initialize driver, exiting - ", *driverName)
+			os.Exit(1)
+		}
 	} else {
 		log.Warning("Unknown driver or invalid/missing driver options, exiting - ", *driverName)
 		os.Exit(1)

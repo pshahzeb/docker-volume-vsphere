@@ -12,49 +12,48 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package vsphere
+package network
 
 //
-// VMWare vSphere Docker Data Volume plugin.
+// File VolumeImpl Driver.
 //
-// Provide support for --driver=vsphere in Docker, when Docker VM is running under ESX.
+// Provide support for NFS based file backed volumes.
 //
-// Serves requests from Docker Engine related to VMDK volume operations.
-// Depends on vmdk-opsd service to be running on hosting ESX
-// (see ./esx_service)
-///
 
 import (
 	"fmt"
 	log "github.com/Sirupsen/logrus"
 	"github.com/docker/go-plugins-helpers/volume"
-	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/vmdk
-	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/network"
+	"path/filepath"
+	"sync"
+	"time"
+	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/config"
 )
 
 const (
-	version          = "vSphere Volume Driver v0.4"
 )
 
-// VolumeDriver - vSphere driver struct
-type VolumeDriver struct {
-	drivers map[string]*VolumeBackend
+// VolumeImplDriver - File backed volume drier meta-data
+type VolumeImplDriver struct {
+	remoteDirs map[string]interface{}
 }
 
-// NewVolumeDriver creates Driver which to real ESX (useMockEsx=False) or a mock
-func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName string, configFile string) *VolumeDriver {
-	var d *VolumeDriver
+// NewVolumeImplDriver creates Driver which to real ESX (useMockEsx=False) or a mock
+func Init(mountDir string, configFile string) (*VolumeImplDriver, error) {
+	var d *VolumeImplDriver
 
 	// Init all known backends - VMDK and network volume drivers
-	d.drivers = make(map[string]*VolumeBackend)
-	d.drivers["vmdk"]  = vmdk.Init(*port, *useMockEsx, mountRoot, *driverName, *configFile)
-	d.drivers["network"]  = network.Init(*port, *useMockEsx, mountRoot, *driverName, *configFile)
-
-	return d
+	d = new(VolumeImplDriver)
+	d.config, err := config.Load(configFile)	
+	if err != nil {
+		log.Warning("Failed to load config file - ", configFile)
+		return nil, err
+	}
+	return d, nil
 }
 
 // Get info about a single volume
-func (d *VolumeDriver) Get(r volume.Request) volume.Response {
+func (d *VolumeImplDriver) Get(r volume.Request) volume.Response {
 	status, err := d.GetVolume(r.Name)
 	if err != nil {
 		return volume.Response{Err: err.Error()}
@@ -66,7 +65,7 @@ func (d *VolumeDriver) Get(r volume.Request) volume.Response {
 }
 
 // List volumes known to the driver
-func (d *VolumeDriver) List(r volume.Request) volume.Response {
+func (d *VolumeImplDriver) List(r volume.Request) volume.Response {
 	volumes, err := d.ops.List()
 	if err != nil {
 		return volume.Response{Err: err.Error()}
@@ -81,27 +80,27 @@ func (d *VolumeDriver) List(r volume.Request) volume.Response {
 }
 
 // GetVolume - return volume meta-data.
-func (d *VolumeDriver) GetVolume(name string) (map[string]interface{}, error) {
+func (d *VolumeImplDriver) GetVolume(name string) (map[string]interface{}, error) {
 }
 
 // Create - create a volume.
-func (d *VolumeDriver) Create(r volume.Request) volume.Response {
+func (d *VolumeImplDriver) Create(r volume.Request) volume.Response {
 }
 
 // Remove - removes individual volume. Docker would call it only if is not using it anymore
-func (d *VolumeDriver) Remove(r volume.Request) volume.Response {
+func (d *VolumeImplDriver) Remove(r volume.Request) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Removing volume ")
 
 	return volume.Response{Err: ""}
 }
 
 // Path - give docker a reminder of the volume mount path
-func (d *VolumeDriver) Path(r volume.Request) volume.Response {
+func (d *VolumeImplDriver) Path(r volume.Request) volume.Response {
 	return volume.Response{Mountpoint: getMountPoint(r.Name)}
 }
 
 // Mount - Provide a volume to docker container - called once per container start.
-func (d *VolumeDriver) Mount(r volume.MountRequest) volume.Response {
+func (d *VolumeImplDriver) Mount(r volume.MountRequest) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Mounting volume ")
 
 	return volume.Response{Mountpoint: mountpoint}
@@ -109,13 +108,13 @@ func (d *VolumeDriver) Mount(r volume.MountRequest) volume.Response {
 
 // Unmount request from Docker. If mount refcount is drop to 0.
 // Unmount and detach from VM
-func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
+func (d *VolumeImplDriver) Unmount(r volume.UnmountRequest) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Unmounting Volume ")
 
 	return volume.Response{Err: ""}
 }
 
 // Capabilities - Report plugin scope to Docker
-func (d *VolumeDriver) Capabilities(r volume.Request) volume.Response {
+func (d *VolumeImplDriver) Capabilities(r volume.Request) volume.Response {
 	return volume.Response{Capabilities: volume.Capability{Scope: "global"}}
 }

@@ -15,14 +15,14 @@
 package vmdk
 
 //
-// VMWare vSphere Docker Data Volume plugin.
+// VMDK VolumeImpl Driver.
 //
-// Provide support for --driver=vsphere in Docker, when Docker VM is running under ESX.
+// Provide support for VMDK backed volumes, when Docker VM is running under ESX.
 //
 // Serves requests from Docker Engine related to VMDK volume operations.
 // Depends on vmdk-opsd service to be running on hosting ESX
 // (see ./esx_service)
-///
+//
 
 import (
 	"fmt"
@@ -35,28 +35,24 @@ import (
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/vmdk/vmdkops"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/fs"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/plugin_utils"
-	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/refcount"
 )
 
 const (
 	devWaitTimeout   = 1 * time.Second
 	sleepBeforeMount = 1 * time.Second
 	watchPath        = "/dev/disk/by-path"
-	version          = "vSphere Volume Driver v0.4"
 )
 
 // VolumeImplDriver - VMDK driver struct
 type VolumeImplDriver struct {
 	useMockEsx    bool
 	ops           vmdkops.VmdkOps
-	refCounts     *refcount.RefCountsMap
-	mountIDtoName map[string]string // map of mountID -> full volume name
 }
 
 var mountRoot string
 
 // Init creates Driver which to real ESX (useMockEsx=False) or a mock
-func Init(port int, useMockEsx bool, mountDir string, config string) *VolumeImplDriver {
+func Init(port int, useMockEsx bool, mountDir string) (*VolumeImplDriver, error) {
 	var d *VolumeImplDriver
 
 	vmdkops.EsxPort = port
@@ -80,12 +76,11 @@ func Init(port int, useMockEsx bool, mountDir string, config string) *VolumeImpl
 
 	d.mountIDtoName = make(map[string]string)
 	log.WithFields(log.Fields{
-		"version":  version,
 		"port":     vmdkops.EsxPort,
 		"mock_esx": useMockEsx,
 	}).Info("Docker VMDK plugin started ")
 
-	return d
+	return d, nil
 }
 
 // VolumesInRefMap - get list of volumes names from refmap
@@ -121,7 +116,7 @@ func (d *VolumeImplDriver) decrRefCount(vol string) (uint, error) {
 	return d.refCounts.Decr(vol)
 }
 
-// Returns the given volume mountpoint
+// GetMountPoint - Returns the given volume mountpoint
 func GetMountPoint(volName string) string {
 	return filepath.Join(mountRoot, volName)
 }
@@ -435,6 +430,6 @@ func (d *VolumeImplDriver) IsMounted(name string) bool {
 
 // IsKnownDS is unsed by any callers, still ack every data
 // store as known
-func (d *VolumeImplDriver) IsKNownDS(name string) bool {
+func (d *VolumeImplDriver) IsKnownDS(name string) bool {
 	return true
 }

@@ -36,6 +36,16 @@ const (
 	defaultLogLevel      = "info"
 )
 
+type RemoteDir {
+	Addr string `json:",omitempty"`
+	Args string `json:",omitempty"`
+	Path string `json:",omitempty"`
+	Fstype string `json:",omitempty"`
+	VolPath string `json:",omitempty"`
+	Src string `json:",omitempty"`
+	Default int `json:",omitempty"`
+}
+
 // Config stores the configuration for the plugin
 type Config struct {
 	Driver        string `json:",omitempty"`
@@ -46,6 +56,7 @@ type Config struct {
 	Target        string `json:",omitempty"`
 	Project       string `json:",omitempty"`
 	Host          string `json:",omitempty"`
+	RemoteDirs    map[string]RemoteDir `json:",omitempty"`
 }
 
 // Load the configuration from a file and return a Config.

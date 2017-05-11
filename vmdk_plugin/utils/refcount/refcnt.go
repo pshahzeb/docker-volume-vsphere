@@ -111,7 +111,7 @@ type refCount struct {
 	dev string
 
 	// Type of backend for this volume
-	type string
+	volType string
 }
 
 // RefCountsMap struct

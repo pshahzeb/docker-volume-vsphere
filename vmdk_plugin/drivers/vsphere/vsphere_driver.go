@@ -30,12 +30,12 @@ import (
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/vmdk"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/network"
+	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/refcount"
 )
 
 const (
 	version   = "vSphere Volume Driver v0.4"
 	fileVol   = "file"
-	blkVol    = "vmdk"
 )
 
 // VolumeDriver - vSphere driver struct
@@ -43,16 +43,21 @@ type VolumeDriver struct {
 	blkVol     *VolumeImpl
 	fileVol    *VolumeImpl
 	refCounts  *refcount.RefCountsMap
+	mountIDtoName map[string]string // map of mountID -> full volume name
 }
 
+// getDSLabel - Split volume name into volume name and DS label
 func (d *VolumeDriver) getDSLabel(name string) string {
-
+	if list := strings.split(name, "@"); len(list) > 1 {
+		return list[1]
+	}
+	return ""
 }
 
 func (d *VolumeDriver) getVolumeImpl(name string) VolumeImpl {
 	dslabel := d.getDSLabel(name)
 	// Netowrk volumes must always be qualified by the exported share name
-	if dslabel != "" and d.fileVol.IsKnownDS(dslabel) {
+	if dslabel != "" && d.fileVol.IsKnownDS(dslabel) {
 		return d.fileVol
 	}
 	return d.blkVol
@@ -64,8 +69,14 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 
 	// Init all known backends - VMDK and network volume drivers
 	d = new(VolumeDriver)
-	d.blkVol = vmdk.Init(*port, *useMockEsx, mountRoot, configFile)
-	d.fileVol = network.Init(*port, *useMockEsx, mountRoot, configFile)
+	d.blkVol, err := vmdk.Init(*port, *useMockEsx, mountRoot)
+	if err != nil {
+		return nil
+	}
+	d.fileVol, err := network.Init(mountRoot, configFile)
+	if err != nil {
+		return nil
+	}
 
 	refCounts :=  refcount.NewRefCountsMap()
 	d.refCounts.Init(d, mountDir, driverName)
@@ -109,15 +120,15 @@ func (d *VolumeDriver) Create(r volume.Request) volume.Response {
 	// For file type volume the network driver handles any
 	// addition opts that specify the exported fs to
 	// create the volume
-	if type, ok := r.Options[volType]; ok == true {
-		if type == fileVol {
+	if volType, ok := r.Options[volType]; ok == true {
+		if volType == fileVol {
 			return d.fileVol.Create(r)
 		}
 	}
 	// If a DS label was specified the backing that recognizes
 	// the DS gets to create the volume
 	dslabel := d.getDSLabel(r.Name)
-	if dslabel != "" and d.fileVol.IsKnownDS(dslabel) {
+	if dslabel != "" && d.fileVol.IsKnownDS(dslabel) {
 		return d.fileVol.Create(r)
 	}
 	return d.blkVol.Create(r)
@@ -237,4 +248,24 @@ func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 // Capabilities - Report plugin scope to Docker
 func (d *VolumeDriver) Capabilities(r volume.Request) volume.Response {
 	return volume.Response{Capabilities: volume.Capability{Scope: "global"}}
+}
+
+// MountVolume - mount a volume without reference counting
+func (d *VolumeDriver) MountVolume(string, string, string, bool, bool) (string, error) {
+
+}
+
+// UnmountVolume - unmount a volume without reference counting
+func (d *VolumeDriver) UnmountVolume(string) error {
+
+}
+
+// GetVolume - get volume data.
+func (d *VolumeDriver) GetVolume(string) (map[string]interface{}, error) {
+
+}
+
+// VolumesInRefMap - return a list of volumes from the refcounter
+func (d *VolumeDriver) VolumesInRefMap() []string {
+
 }
