@@ -35,16 +35,24 @@ import (
 
 const (
 	version   = "vSphere Volume Driver v0.4"
-	fileVol   = "file"
+	fileType  = "file"
+	vmdkType  = "vmdk"
 )
+
+type MountedVolume struct {
+	mountIDs []string
+	volImpl  VolumeImpl
+}
 
 // VolumeDriver - vSphere driver struct
 type VolumeDriver struct {
 	blkVol     *VolumeImpl
 	fileVol    *VolumeImpl
 	refCounts  *refcount.RefCountsMap
-	mountIDtoName map[string]string // map of mountID -> full volume name
+	mountedVols   map[string]MountedVolume
 }
+
+var volumeBackingMap map[string]VolumeImpl
 
 // getDSLabel - Split volume name into volume name and DS label
 func (d *VolumeDriver) getDSLabel(name string) string {
@@ -55,12 +63,18 @@ func (d *VolumeDriver) getDSLabel(name string) string {
 }
 
 func (d *VolumeDriver) getVolumeImpl(name string) VolumeImpl {
+	// Check if the mounted volumes map has the volume
+	volImpl, ok := d.mountedVols[name]
+	if ok {
+		return volImpl
+	}
+
 	dslabel := d.getDSLabel(name)
 	// Netowrk volumes must always be qualified by the exported share name
-	if dslabel != "" && d.fileVol.IsKnownDS(dslabel) {
-		return d.fileVol
+	if dslabel != "" && volumeBackingMap[fileType].IsKnownDS(dslabel) {
+		return volumeBackingMap[fileType]
 	}
-	return d.blkVol
+	return volumeBackingMap[vmdkType]
 }
 
 // NewVolumeDriver creates Driver which to real ESX (useMockEsx=False) or a mock
@@ -69,15 +83,19 @@ func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName stri
 
 	// Init all known backends - VMDK and network volume drivers
 	d = new(VolumeDriver)
-	d.blkVol, err := vmdk.Init(*port, *useMockEsx, mountRoot)
-	if err != nil {
-		return nil
-	}
-	d.fileVol, err := network.Init(mountRoot, configFile)
+	blkImpl, err := vmdk.Init(*port, *useMockEsx, mountRoot)
 	if err != nil {
 		return nil
 	}
 
+	volumeBackingMap[vmdkType] = blkImpl
+
+	fileImpl, err := network.Init(mountRoot, configFile)
+	if err != nil {
+		return nil
+	}
+
+	volumeBackingMap[fileType] = fileImpl
 	refCounts :=  refcount.NewRefCountsMap()
 	d.refCounts.Init(d, mountDir, driverName)
 
@@ -121,17 +139,17 @@ func (d *VolumeDriver) Create(r volume.Request) volume.Response {
 	// addition opts that specify the exported fs to
 	// create the volume
 	if volType, ok := r.Options[volType]; ok == true {
-		if volType == fileVol {
-			return d.fileVol.Create(r)
+		if volType == fileType {
+			return volumeBackingMap[fileType].Create(r)
 		}
 	}
 	// If a DS label was specified the backing that recognizes
 	// the DS gets to create the volume
 	dslabel := d.getDSLabel(r.Name)
-	if dslabel != "" && d.fileVol.IsKnownDS(dslabel) {
-		return d.fileVol.Create(r)
+	if dslabel != "" && volumeBackingMap[fileType].IsKnownDS(dslabel) {
+		return volumeBackingMap[fileType].Create(r)
 	}
-	return d.blkVol.Create(r)
+	return volumeBackingMap[vmdkType].Create(r)
 }
 
 // Remove - removes individual volume. Docker would call it only if is not using it anymore
