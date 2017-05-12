@@ -28,6 +28,7 @@ import (
 	"sync"
 	"time"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/config"
+	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/plugin_utils"
 )
 
 const (
@@ -35,14 +36,17 @@ const (
 
 // VolumeImplDriver - File backed volume drier meta-data
 type VolumeImplDriver struct {
+	config config.Config
 }
 
 // NewVolumeImplDriver creates Driver which to real ESX (useMockEsx=False) or a mock
-func Init(mountDir string, configFile string) (*VolumeImplDriver, error) {
+func Init(mountDir string, config config.Config) (*VolumeImplDriver, error) {
 	var d *VolumeImplDriver
 
 	// Init all known backends - VMDK and network volume drivers
 	d = new(VolumeImplDriver)
+	d.config = config
+
 	return d, nil
 }
 
@@ -60,13 +64,13 @@ func (d *VolumeImplDriver) Get(r volume.Request) volume.Response {
 
 // List volumes known to the driver
 func (d *VolumeImplDriver) List(r volume.Request) volume.Response {
-	volumes, err := d.ops.List()
+	volumes, err := d.GetVolumeList()
 	if err != nil {
 		return volume.Response{Err: err.Error()}
 	}
 	responseVolumes := make([]*volume.Volume, 0, len(volumes))
 	for _, vol := range volumes {
-		mountpoint := getMountPoint(vol.Name)
+		mountpoint := d.GetMountPoint(vol.Name)
 		responseVol := volume.Volume{Name: vol.Name, Mountpoint: mountpoint}
 		responseVolumes = append(responseVolumes, &responseVol)
 	}
@@ -79,6 +83,21 @@ func (d *VolumeImplDriver) GetVolume(name string) (map[string]interface{}, error
 
 // Create - create a volume.
 func (d *VolumeImplDriver) Create(r volume.Request) volume.Response {
+	// Check if the default label is to be used or pick the
+	// specified label and mount that if not already mounted
+	dslabel := plugin_utils.GetDSLabel(r.Name)
+
+	if dslabel == "" {
+		// Use the default label else error
+		dslabel = d.config.RemoteDirs.Default
+	}
+
+	// Check if the folder for the named volume already exists
+	// else create it in the vol-path specified for this label.
+	if !isMounted(dsLabel) {
+		// Mount the remote dir for this label
+	}
+	// Verify folder for the named volume doesn't exist and create it
 }
 
 // Remove - removes individual volume. Docker would call it only if is not using it anymore
@@ -108,7 +127,6 @@ func (d *VolumeImplDriver) Unmount(r volume.UnmountRequest) volume.Response {
 	return volume.Response{Err: ""}
 }
 
-// Capabilities - Report plugin scope to Docker
-func (d *VolumeImplDriver) Capabilities(r volume.Request) volume.Response {
-	return volume.Response{Capabilities: volume.Capability{Scope: "global"}}
+func (d *VolumeDriver) MountVolume(name string, fstype string, id string, isReadOnly bool, skipAttach bool) (string, error) {
+
 }

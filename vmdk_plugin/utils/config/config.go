@@ -36,15 +36,21 @@ const (
 	defaultLogLevel      = "info"
 )
 
-type RemoteDir {
+// RemoteDir describes a network shared folder.
+type RemoteDir struct {
 	Addr string `json:",omitempty"`
 	Args string `json:",omitempty"`
 	Path string `json:",omitempty"`
 	Fstype string `json:",omitempty"`
 	VolPath string `json:",omitempty"`
 	Src string `json:",omitempty"`
-	Default int `json:",omitempty"`
 }
+
+// RemoteDirList - table of remote dirs and the default table entry 
+// to use to place volumes.
+type RemoteDirList struct {
+	Default string `json:",omitempty"`
+	RemoteDirTbl map[string]RemoteDir `json:",omitempty"`
 
 // Config stores the configuration for the plugin
 type Config struct {
@@ -56,7 +62,7 @@ type Config struct {
 	Target        string `json:",omitempty"`
 	Project       string `json:",omitempty"`
 	Host          string `json:",omitempty"`
-	RemoteDirs    map[string]RemoteDir `json:",omitempty"`
+	RemoteDirs    RemoteDirList `json:",omitempty"`
 }
 
 // Load the configuration from a file and return a Config.

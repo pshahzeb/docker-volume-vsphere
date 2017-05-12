@@ -428,7 +428,8 @@ func (r *RefCountsMap) discoverAndSync(c *client.Client, d drivers.VolumeDriver)
 			volumeInfo, err := plugin_utils.GetVolumeInfo(mount.Name, datastoreName, d)
 			if err != nil {
 				log.Errorf("Unable to get volume info for volume %s. err:%v", mount.Name, err)
-				return err
+				// Process the remaining volumes
+				continue
 			}
 			datastoreName = volumeInfo.DatastoreName
 			r.Incr(volumeInfo.VolumeName)

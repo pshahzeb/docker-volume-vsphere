@@ -79,16 +79,6 @@ func IsMounted(name string, mountRoot string) bool {
 	return false
 }
 
-// JoinVolName - return a full name in format volume@datastore
-func JoinVolName(volName string, datastoreName string) string {
-	return strings.Join([]string{volName, datastoreName}, "@")
-}
-
-// SplitVolName - split a volume name into short name and datastore
-func SplitVolName(fullVolName string) []string {
-	return strings.Split(fullVolName, "@")
-}
-
 // IsFullVolName - Check if volume name is full volume name
 func IsFullVolName(volName string) bool {
 	return strings.ContainsAny(volName, "@")
@@ -104,7 +94,7 @@ func getNameFromRefmap(volName string, d drivers.VolumeDriver) string {
 	fullname := ""
 
 	for _, name := range volumeNameList {
-		refVolName := SplitVolName(name)[0]
+		refVolName := strings.Split(name, "@")
 		if refVolName != volName {
 			continue
 		}
@@ -129,7 +119,7 @@ func GetVolumeInfo(name string, datastoreName string, d drivers.VolumeDriver) (*
 
 	// if datastore name is provided, append and return
 	if datastoreName != "" {
-		return &VolumeInfo{JoinVolName(name, datastoreName), datastoreName, nil}, nil
+		return &VolumeInfo{strings.Join(name, datastoreName, "@"), datastoreName, nil}, nil
 	}
 
 	// find full volume names using refmap if possible
@@ -137,12 +127,19 @@ func GetVolumeInfo(name string, datastoreName string, d drivers.VolumeDriver) (*
 		return &VolumeInfo{fullVolumeName, "", nil}, nil
 	}
 
-	// Do a get trip to esx and construct full name
+	// Fetch volume meta-data
 	volumeMeta, err := d.GetVolume(name)
 	if err != nil {
 		log.Errorf("Unable to get volume metadata %s (err: %v)", name, err)
 		return nil, err
 	}
 	datastoreName = volumeMeta[datastoreKey].(string)
-	return &VolumeInfo{JoinVolName(name, datastoreName), datastoreName, volumeMeta}, nil
+	return &VolumeInfo{strings.Join(name, datastoreName, "@"), datastoreName, volumeMeta}, nil
+}
+
+func GetDSLabel(name string) string {
+	if list := strings.Split(name, "@"); len(list > 1) {
+		return list[1]
+	}	
+	return ""
 }
