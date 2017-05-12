@@ -358,6 +358,16 @@ func isVMDKMount(mount_source string) bool {
 	return false
 }
 
+//LockStateLock - accquire the state lock of the refcounter
+func (r *RefCountsMap) LockStateLock() {
+	r.StateMtx.Lock()
+}
+
+//UnlockStateLock - accquire the state lock of the refcounter
+func (r *RefCountsMap) UnlockStateLock() {
+	r.StateMtx.Unlock()
+}
+
 // check if refcounting has been made dirty by mounts/unmounts
 func (r *RefCountsMap) checkDirty() bool {
 	r.StateMtx.Lock()

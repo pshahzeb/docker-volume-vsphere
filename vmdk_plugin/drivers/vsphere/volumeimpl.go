@@ -19,15 +19,14 @@ import "github.com/docker/go-plugins-helpers/volume"
 // VolumeDriver interface used by the refcountedVolume module to handle
 // recovery mounts/unmounts.
 type VolumeImpl interface {
-	Create(r volume.Request) volume.Response
-	Mount(r volume.MountRequest) (string, error)
+	Create(volume.Request) volume.Response
+	Mount(volume.MountRequest, plugin_utils.VolumeInfo) (string, error)
 	Unmount(string) error
 	Get(string) (map[string]interface{}, error)
-	Inspect(r volume.Request) volume.Response
-	Remove(r volume.Request) volume.Response
-	Path(r volume.Request) volume.Response
+	Inspect(volume.Request) volume.Response
+	Remove(volume.Request) volume.Response
+	Path(volume.Request) volume.Response
 	List() ([]*volume.Volume, error)
-	IsKnownDS(string) bool
 	GetMountPoint(string) string
 	IsMounted(string) bool
 }

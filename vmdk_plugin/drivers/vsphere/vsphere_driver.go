@@ -31,25 +31,28 @@ import (
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/vmdk"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/drivers/network"
 	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/refcount"
+	"github.com/vmware/docker-volume-vsphere/vmdk_plugin/utils/config"
 )
 
 const (
 	version   = "vSphere Volume Driver v0.4"
 	fileType  = "file"
-	vmdkType  = "vmdk"
+	vmdkImpl  = "vmdk"
+	nfsImpl   = "nfs"
 )
 
 type MountedVolume struct {
+	// List of mount IDs that mounted this volume
 	mountIDs []string
-	volImpl  VolumeImpl
+	// VolumeImpl driver for this volume
+	fsType  string
 }
 
 // VolumeDriver - vSphere driver struct
 type VolumeDriver struct {
-	blkVol     *VolumeImpl
-	fileVol    *VolumeImpl
 	refCounts  *refcount.RefCountsMap
-	mountedVols   map[string]MountedVolume
+	mountedVols map[string]MountedVolume
+	config config.Config
 }
 
 var volumeBackingMap map[string]VolumeImpl
@@ -62,40 +65,46 @@ func (d *VolumeDriver) getDSLabel(name string) string {
 	return ""
 }
 
-func (d *VolumeDriver) getVolumeImpl(name string) VolumeImpl {
-	// Check if the mounted volumes map has the volume
-	volImpl, ok := d.mountedVols[name]
-	if ok {
-		return volImpl
+func (d *VolumeDriver) getVolumeFromMap(name string) (VolumeImpl, string) {
+	// If the volume is mounted then get the backing for
+	// it from the mounted volumes map.
+	if fsType, ok := d.mountedVols[name]; ok {
+		return volumeBackingMap[fsType], fsType
 	}
 
+	// Else figure the FS type for the label and use the
+	// volume impl for that.
 	dslabel := d.getDSLabel(name)
-	// Netowrk volumes must always be qualified by the exported share name
-	if dslabel != "" && volumeBackingMap[fileType].IsKnownDS(dslabel) {
-		return volumeBackingMap[fileType]
+	if dslabel != "" && d.config.RemoteDirs {
+		if rdir, ok := d.config.RemoteDirs[dslabel]; ok {
+			return volumeBackingMap[rdir.FSType], rdir.FSType
+		}
 	}
-	return volumeBackingMap[vmdkType]
+	return volumeBackingMap[vmdkType], ""
 }
 
 // NewVolumeDriver creates Driver which to real ESX (useMockEsx=False) or a mock
 func NewVolumeDriver(port int, useMockEsx bool, mountDir string, driverName string, configFile string) *VolumeDriver {
 	var d *VolumeDriver
 
+	d.config, err := config.Load(configFile)	
+	if err != nil {
+		log.Warning("Failed to load config file - ", configFile)
+		return nil, err
+	}
+
 	// Init all known backends - VMDK and network volume drivers
 	d = new(VolumeDriver)
-	blkImpl, err := vmdk.Init(*port, *useMockEsx, mountRoot)
+	volumeBackingMap[vmdkType], err := vmdk.Init(*port, *useMockEsx, mountRoot)
 	if err != nil {
 		return nil
 	}
 
-	volumeBackingMap[vmdkType] = blkImpl
-
-	fileImpl, err := network.Init(mountRoot, configFile)
+	volumeBackingMap[nfsImpl], err := network.Init(mountRoot, config)
 	if err != nil {
 		return nil
 	}
 
-	volumeBackingMap[fileType] = fileImpl
 	refCounts :=  refcount.NewRefCountsMap()
 	d.refCounts.Init(d, mountDir, driverName)
 
@@ -113,7 +122,7 @@ func (d *VolumeDriver) decrRefCount(vol string) (uint, error) { return d.refCoun
 
 // Get info about a single volume
 func (d *VolumeDriver) Get(r volume.Request) volume.Response {
-	volImpl := getVolumeImpl(r.Name)
+	volImpl, _ := getVolumeFromMap(r.Name)
 	return volImpl.Get(r)
 }
 
@@ -162,37 +171,38 @@ func (d *VolumeDriver) Remove(r volume.Request) volume.Response {
 		log.Error(msg)
 		return volume.Response{Err: msg}
 	}
-	volImpl := d.getVolumeImpl(r.Name)
+	volImpl, _ := d.getVolumeFromMap(r.Name)
 	return volImpl.Remove(r)
 }
 
 // Path - give docker a reminder of the volume mount path
 func (d *VolumeDriver) Path(r volume.Request) volume.Response {
-	volImpl := d.getVolumeImpl(r.Name)
-	return volImpl.Remove(r)
+	volImpl, _ := d.getVolumeFromMap(r.Name)
+	return volImpl.Path(r)
 }
 
 // Mount - Provide a volume to docker container - called once per container start.
 func (d *VolumeDriver) Mount(r volume.MountRequest) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Mounting volume ")
 
-	volImpl := d.getVolumeImpl(r.Name)
+	volImpl, _ := d.getVolumeFromMap(r.Name)
 
 	// lock the state
-	d.refCounts.StateMtx.Lock()
-	defer d.refCounts.StateMtx.Unlock()
+	d.refCounts.LockStateLock()
+	defer d.refCounts.UnlockStateLock()
 
 	// Checked by refcounting thread until refmap initialized
 	d.refCounts.MarkDirty()
 
 	// Get the full name for the given volume
-	volumeInfo, err := plugin_utils.GetVolumeInfo(r.Name, "", d)
+	volInfo, err := plugin_utils.GetVolumeInfo(r.Name, "", d)
 	if err != nil {
 		log.Errorf("Unable to get volume info for volume %s. err:%v", r.Name, err)
 		return volume.Response{Err: err.Error()}
 	}
-	fname = volumeInfo.VolumeName
-	d.mountIDtoName[r.ID] = fname
+
+	fname = volInfo.VolumeName
+	d.mountedVolumes[fname].fsType = fstype
 
 	// If the volume is already mounted , increase the refcount.
 	// Note: for new keys, GO maps return zero value, so no need for if_exists.
@@ -202,10 +212,10 @@ func (d *VolumeDriver) Mount(r volume.MountRequest) volume.Response {
 		log.WithFields(
 			log.Fields{"name": fname, "refcount": refcnt},
 		).Info("Already mounted, skipping mount. ")
-		return volume.Response{Mountpoint: GetMountPoint(fname)}
+		return volume.Response{Mountpoint: volImpl.GetMountPoint(fname)}
 	}
 
-	response := volImpl.Mount(r)
+	response := volImpl.Mount(r, volInfo)
 	if response.Err != "" {
 		d.decrRefCount(fname)
 		d.refCounts.ClearDirty()
@@ -217,7 +227,7 @@ func (d *VolumeDriver) Mount(r volume.MountRequest) volume.Response {
 // Unmount and detach from VM
 func (d *VolumeDriver) Unmount(r volume.UnmountRequest) volume.Response {
 	log.WithFields(log.Fields{"name": r.Name}).Info("Unmounting Volume ")
-	volImpl := d.getVolumeImpl(r.Name)
+	volImpl, _ := d.getVolumeFromMap(r.Name)
 
 	// lock the state
 	d.refCounts.StateMtx.Lock()

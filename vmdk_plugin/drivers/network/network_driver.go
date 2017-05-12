@@ -35,7 +35,6 @@ const (
 
 // VolumeImplDriver - File backed volume drier meta-data
 type VolumeImplDriver struct {
-	remoteDirs map[string]interface{}
 }
 
 // NewVolumeImplDriver creates Driver which to real ESX (useMockEsx=False) or a mock
@@ -44,11 +43,6 @@ func Init(mountDir string, configFile string) (*VolumeImplDriver, error) {
 
 	// Init all known backends - VMDK and network volume drivers
 	d = new(VolumeImplDriver)
-	d.config, err := config.Load(configFile)	
-	if err != nil {
-		log.Warning("Failed to load config file - ", configFile)
-		return nil, err
-	}
 	return d, nil
 }
 

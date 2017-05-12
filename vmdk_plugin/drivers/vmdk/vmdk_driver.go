@@ -357,13 +357,14 @@ func (d *VolumeImplDriver) Path(r volume.Request) volume.Response {
 // As long as the refCountsMap is protected is unnecessary to do any locking
 // at this level during create/mount/umount/remove.
 //
-func (d *VolumeImplDriver) Mount(r volume.MountRequest) (string, error) {
-	log.WithFields(log.Fields{"name": r.Name}).Info("Mounting volume ")
+func (d *VolumeImplDriver) Mount(r volume.MountRequest, volInfo plugin_utils.VolumeInfo) volume.Response {
+	fname := volInfo.VolumeName
+	log.WithFields(log.Fields{"name": fname}).Info("Mounting volume ")
+
 	// get volume metadata if required
-	volumeMeta := volumeInfo.VolumeMeta
+	volumeMeta := volInfo.VolumeMeta
 	if volumeMeta == nil {
 		if volumeMeta, err = d.ops.Get(r.Name); err != nil {
-			d.decrRefCount(r.Name)
 			return volume.Response{Err: err.Error()}
 		}
 	}
@@ -371,7 +372,6 @@ func (d *VolumeImplDriver) Mount(r volume.MountRequest) (string, error) {
 	fstype := fs.FstypeDefault
 	isReadOnly := false
 	if err != nil {
-		d.decrRefCount(r.Name)
 		return volume.Response{Err: err.Error()}
 	}
 	// Check access type.
@@ -426,10 +426,4 @@ func (d *VolumeImplDriver) Unmount(r volume.UnmountRequest) volume.Response {
 // used by this volume driver
 func (d *VolumeImplDriver) IsMounted(name string) bool {
 	return plugin_utils.IsMounted(name, mountRoot)
-}
-
-// IsKnownDS is unsed by any callers, still ack every data
-// store as known
-func (d *VolumeImplDriver) IsKnownDS(name string) bool {
-	return true
 }
