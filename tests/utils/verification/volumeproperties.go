@@ -146,24 +146,34 @@ func getVolumeStatusHost(name, hostName string) string {
 func VerifyDetachedStatus(name, hostName, esxName string) bool {
 	log.Printf("Confirming detached status for volume [%s]\n", name)
 
-	// Use full name to check volume status on docker host
 	fullName := GetFullVolumeName(hostName, name)
+	// Use full name to check volume status on docker host
+	status := getVolumeStatusHost(fullName, hostName)
+	if status != properties.DetachedStatus {
+		return false
+	}
+	// Use short name to check volume status on ESX
+	// this api returnes "detached" in when volume is detached
+	status = GetVMAttachedToVolUsingAdminCli(name, esxName)
+	if status != properties.DetachedStatus {
+		return false
+	}
+
+	return true
+}
+
+// PollDetachedStatus Poll for detached status of a volume after 2 seconds till maxAttemps
+// returns true if status is detached within retrials, else returns false
+func PollDetachedStatus(name, hostName, esxName string) bool {
+	log.Printf("Polling detached status for volume [%s]\n", name)
 
 	//TODO: Need to implement generic polling logic for better reuse
 	const maxAttempt = 60
 	for attempt := 0; attempt < maxAttempt; attempt++ {
-		misc.SleepForSec(2)
-		// Use full name to check volume status on docker host
-		status := getVolumeStatusHost(fullName, hostName)
-		if status != properties.DetachedStatus {
-			continue
-		}
-		// Use short name to check volume status on ESX
-		// this api returnes "detached" in when volume is detached
-		status = GetVMAttachedToVolUsingAdminCli(name, esxName)
-		if status == properties.DetachedStatus {
+		if VerifyDetachedStatus(name, hostName, esxName) {
 			return true
 		}
+		misc.SleepForSec(2)
 	}
 	log.Printf("Timed out to poll status\n")
 	return false

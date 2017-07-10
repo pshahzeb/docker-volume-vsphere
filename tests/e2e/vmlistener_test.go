@@ -160,7 +160,7 @@ func (s *VMListenerTestParams) TestBasicFailover(c *C) {
 	c.Assert(verification.IsVDVSIsRunning(s.vm1), Equals, true, Commentf("vDVS is not running on [%s]", s.vm1Name))
 
 	// Status should be detached
-	status = verification.VerifyDetachedStatus(s.volumeName, s.vm1, s.esx)
+	status = verification.PollDetachedStatus(s.volumeName, s.vm1, s.esx)
 	c.Assert(status, Equals, true, Commentf("Volume %s is still attached", s.volumeName))
 
 	// Remove the container if it still exists
@@ -325,7 +325,7 @@ func (s *VMListenerTestParams) TestFailoverAcrossVmOnVsan(c *C) {
 	c.Assert(verification.IsVDVSIsRunning(s.vm1), Equals, true, Commentf("vDVS is not running on [%s]", s.vm1Name))
 
 	// Status should be still detached
-	status = verification.VerifyDetachedStatus(s.volumeName, s.vm1, s.esx)
+	status = verification.PollDetachedStatus(s.volumeName, s.vm1, s.esx)
 	c.Assert(status, Equals, true, Commentf("Volume %s is not detached", s.volumeName))
 
 	// Remove the container if it still exists
