@@ -143,6 +143,8 @@ func getVolumeStatusHost(name, hostName string) string {
 
 // VerifyDetachedStatus - check if the status gets detached within the timeout.
 // The name of the volume MUST be a shorter name without @datastore suffix.
+// Use this util in test scenarios where the test expects instant change of status to detached.
+// eg: start a container ->  stop a container -> verify detached status
 func VerifyDetachedStatus(name, hostName, esxName string) bool {
 	log.Printf("Confirming detached status for volume [%s]\n", name)
 
@@ -164,6 +166,8 @@ func VerifyDetachedStatus(name, hostName, esxName string) bool {
 
 // PollDetachedStatus Poll for detached status of a volume after 2 seconds till maxAttemps
 // returns true if status is detached within retrials, else returns false
+// Use this util in test scenarios where status update takes time.
+// eg: restarts, failovers where some time is spent for plugin to stabilize and then perform mount/unmounts
 func PollDetachedStatus(name, hostName, esxName string) bool {
 	log.Printf("Polling detached status for volume [%s]\n", name)
 
