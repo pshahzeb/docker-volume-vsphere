@@ -129,7 +129,7 @@ func ConfigInit(ip string) (string, error) {
 
 	// verify the DB init
 	if GetDBmode(ip) == admincli.DBSingleNode {
-		return "DB init successful on esx " + ip, nil
+		return out, nil
 	}
 
 	msg := "Could not init DB to SingleNode on esx " + ip
@@ -147,7 +147,7 @@ func ConfigRemove(ip string) (string, error) {
 
 	// verify the DB removal
 	if GetDBmode(ip) == admincli.DBNotConfigured {
-		return "DB remove successful on esx " + ip, nil
+		return out, nil
 	}
 
 	msg := "Could not remove DB on esx " + ip
