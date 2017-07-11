@@ -128,12 +128,12 @@ func ConfigInit(ip string) (string, error) {
 	}
 
 	// verify the DB init
-	if GetDBmode(ip) != admincli.DBSingleNode {
-		msg := "Could not init DB to SingleNode on esx " + ip
-		return msg, fmt.Errorf(msg)
+	if GetDBmode(ip) == admincli.DBSingleNode {
+		return "DB init successful on esx " + ip, nil
 	}
 
-	return "DB init successful on esx " + ip, nil
+	msg := "Could not init DB to SingleNode on esx " + ip
+	return msg, fmt.Errorf(msg)
 }
 
 // ConfigRemove - Remove the (local) Single Node Config DB
@@ -146,13 +146,12 @@ func ConfigRemove(ip string) (string, error) {
 	}
 
 	// verify the DB removal
-	if GetDBmode(ip) != admincli.DBNotConfigured {
-		msg := "Could not remove DB on esx " + ip
-		return msg, fmt.Errorf(msg)
+	if GetDBmode(ip) == admincli.DBNotConfigured {
+		return "DB remove successful on esx " + ip, nil
 	}
 
-	return "DB remove successful on esx " + ip, nil
-
+	msg := "Could not remove DB on esx " + ip
+	return msg, fmt.Errorf(msg)
 }
 
 // IsVmgroupPresent - checks for a vmgroup in list of vmgroups
