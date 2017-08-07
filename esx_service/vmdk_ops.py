@@ -660,11 +660,16 @@ def listVMDK(tenant):
             for x in vmdks]
 
 
-# Return VM managed object, reconnect if needed. Throws if connection fails twice.
-# returns None if the uuid is not found
-def findVmByUuid(vm_uuid):
+
+def findVmByUuid(vm_uuid, is_vc_uuid=False):
+    """
+    Find VM by vm_uuid.
+    is_vc_uuid should be true if vm_uuid is vc uuid, else it should be false.
+    Return VM managed object, reconnect if needed. Throws if connection fails twice.
+    Returns None if the uuid is not found
+    """
     si = get_si()
-    vm = si.content.searchIndex.FindByUuid(None, vm_uuid, True, False)
+    vm = si.content.searchIndex.FindByUuid(None, vm_uuid, True, is_vc_uuid)
     return vm
 
 def findVmByUuidChoice(bios_uuid, vc_uuid):
@@ -674,10 +679,10 @@ def findVmByUuidChoice(bios_uuid, vc_uuid):
     """
     vm = None
     if vc_uuid:
-        vm = findVmByUuid(vc_uuid)
+        vm = findVmByUuid(vc_uuid, True)
     if not vm: # either vc_uuid is not even passed, or we failed to find the VM by VC uuid:
         logging.warning("Failed to find VM by VC UUID %s, trying BIOS UUID %s", vc_uuid, bios_uuid)
-        vm = findVmByUuid(bios_uuid)
+        vm = findVmByUuid(bios_uuid, False)
     if not vm: # can't find VM by VC or BIOS uuid
         logging.error("Failed to find VM by BIOS UUID either.")
         return None
@@ -706,7 +711,7 @@ def apply_action_VMDK(action, vmdk_path, vm_name, bios_uuid, vc_uuid):
     logging.info("*** %s: VMDK %s to VM '%s' , bios uuid = %s, VC uuid=%s)",
                  action.__name__, vmdk_path, vm_name, bios_uuid, vc_uuid)
     vm = findVmByUuidChoice(bios_uuid, vc_uuid)
-    if not vm: # can find VM by VC or BIOS uuid
+    if not vm: # can't find VM by VC or BIOS uuid
         return err("Failed to find VM object for %s (bios %s vc %s)" % (vm_name, bios_uuid, vc_uuid))
 
     if vm.config.name != vm_name:
@@ -1183,6 +1188,7 @@ def setStatusAttached(vmdk_path, vm, vm_dev_info=None):
     if not vol_meta:
         vol_meta = {}
     vol_meta[kv.STATUS] = kv.ATTACHED
+    # instanceUuid i.e. vc uuid of a VM is stored in volume kv
     vol_meta[kv.ATTACHED_VM_UUID] = vm.config.instanceUuid
     vol_meta[kv.ATTACHED_VM_NAME] = vm.config.name
     if vm_dev_info:
@@ -1241,7 +1247,8 @@ def log_attached_volume(vmdk_path, kv_uuid, vol_name):
     '''
     Log appropriate message for volume thats already attached.
     '''
-    cur_vm = findVmByUuid(kv_uuid)
+    # in volume kv, uuid stored for a VM is vc uuid. So find VM by vc uuid.
+    cur_vm = findVmByUuid(kv_uuid, True)
 
     if cur_vm:
         msg = "Disk {0} is already attached to VM {1}".format(vmdk_path,
