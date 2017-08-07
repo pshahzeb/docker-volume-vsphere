@@ -681,7 +681,7 @@ def findVmByUuidChoice(bios_uuid, vc_uuid):
     if vc_uuid:
         vm = findVmByUuid(vc_uuid, True)
     if not vm: # either vc_uuid is not even passed, or we failed to find the VM by VC uuid:
-        logging.warning("Failed to find VM by VC UUID %s, trying BIOS UUID %s", vc_uuid, bios_uuid)
+        logging.info("Failed to find VM by VC UUID %s, trying BIOS UUID %s", vc_uuid, bios_uuid)
         vm = findVmByUuid(bios_uuid, False)
     if not vm: # can't find VM by VC or BIOS uuid
         logging.error("Failed to find VM by BIOS UUID either.")
@@ -1188,7 +1188,6 @@ def setStatusAttached(vmdk_path, vm, vm_dev_info=None):
     if not vol_meta:
         vol_meta = {}
     vol_meta[kv.STATUS] = kv.ATTACHED
-    # instanceUuid i.e. vc uuid of a VM is stored in volume kv
     vol_meta[kv.ATTACHED_VM_UUID] = vm.config.instanceUuid
     vol_meta[kv.ATTACHED_VM_NAME] = vm.config.name
     if vm_dev_info:
@@ -1247,8 +1246,13 @@ def log_attached_volume(vmdk_path, kv_uuid, vol_name):
     '''
     Log appropriate message for volume thats already attached.
     '''
-    # in volume kv, uuid stored for a VM is vc uuid. So find VM by vc uuid.
+    # Treat kv_uuid as vc uuid to find VM
     cur_vm = findVmByUuid(kv_uuid, True)
+
+    if not cur_vm:
+        # Prior to #1526, uuid in KV is bios uuid.
+        logging.info("Using %s as BIOS uuid to find the VM", kv_uuid)
+        cur_vm = findVmByUuid(kv_uuid, False)
 
     if cur_vm:
         msg = "Disk {0} is already attached to VM {1}".format(vmdk_path,
