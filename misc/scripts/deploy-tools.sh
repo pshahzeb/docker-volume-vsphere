@@ -44,6 +44,7 @@ WIN_TEMP_DIR=C:\\Users\\root\\AppData\\Local\\Temp
 WIN_PLUGIN_SRC_DIR=C:\\Users\\root\\go\\src\\github.com\\vmware\\docker-volume-vsphere
 WIN_PLUGIN_BIN_ZIP_LOC=$WIN_PLUGIN_SRC_DIR\\build\\windows\\docker-volume-vsphere.zip
 WIN_BUILD_DIR=build/windows/
+HOSTD=/etc/init.d/hostd
 
 # VM Functions
 
@@ -210,6 +211,8 @@ function deployESXInstall {
 }
 
 function deployESXPost {
+    # restart hostd so that esxcli extension file is read
+    $SSH $TARGET $HOSTD restart
     $SSH $TARGET $VMDK_OPSD status
     if [ $? -ne 0 ]
     then
