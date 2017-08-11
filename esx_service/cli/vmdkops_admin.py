@@ -1236,7 +1236,7 @@ def err_out(_msg, _info=None):
 
 
 def err_override(_msg, _info):
-    """A helper to print messates with extra help about --force flag"""
+    """A helper to print messages with extra help about --force flag"""
     new_msg = "{}".format(_msg) + " . Add '--force' flag to force the request execution"
     return err_out(new_msg, _info)
 
