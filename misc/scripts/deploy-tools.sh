@@ -208,11 +208,12 @@ function deployESXInstall {
         log "deployESXInstall: Installation hit an error on $TARGET"
         exit 2
     fi
+
+    # restart hostd so that esxcli extension file is read
+    $SSH $TARGET $HOSTD restart
 }
 
 function deployESXPost {
-    # restart hostd so that esxcli extension file is read
-    $SSH $TARGET $HOSTD restart
     $SSH $TARGET $VMDK_OPSD status
     if [ $? -ne 0 ]
     then
