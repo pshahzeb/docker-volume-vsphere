@@ -209,7 +209,7 @@ function deployESXInstall {
         exit 2
     fi
 
-    # restart hostd so that esxcli extension file is read
+    # Restart hostd so that esxcli extension file is read
     $SSH $TARGET $HOSTD restart
 }
 
