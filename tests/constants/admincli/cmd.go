@@ -18,7 +18,7 @@ package admincli
 
 const (
 	// location of the vmdkops binary
-	vmdkopsAdmin = "/usr/lib/vmware/vmdkops/bin/vmdkops_admin.py "
+	vmdkopsAdmin = "esxcli storage dvol "
 
 	// vmdkops_admin volume
 	vmdkopsAdminVolume = vmdkopsAdmin + "volume "
