@@ -56,6 +56,7 @@ func GetVMAttachedToVolUsingAdminCli(volName string, hostname string) string {
 		log.Fatalf("Admin cli output is expected to consist of two elements only - "+
 			"volume name and attached-to-vm status. Actual output %s ", op)
 	}
+	log.Printf("Volume %s status through admin cli is: %s", volName, volProps[1])
 	return volProps[1]
 }
 

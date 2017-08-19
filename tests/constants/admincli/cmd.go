@@ -18,7 +18,7 @@ package admincli
 
 const (
 	// location of the vmdkops binary
-	vmdkopsAdmin = "esxcli storage dvol "
+	vmdkopsAdmin = "esxcli storage guestvol "
 
 	// vmdkops_admin volume
 	vmdkopsAdminVolume = vmdkopsAdmin + "volume "
