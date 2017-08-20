@@ -26,6 +26,9 @@ const (
 	// ListVolumes referring to vmdkops_admin volume ls
 	ListVolumes = vmdkopsAdminVolume + "ls "
 
+	// ShortListVolumes referring to vmdkops_admin volume shortls listing Volume, Capacity, Disk Format, Attached-to
+	ShortListVolumes = vmdkopsAdminVolume + "shortls "
+
 	// SetVolumeAccess set volume access
 	SetVolumeAccess = vmdkopsAdminVolume + " set "
 

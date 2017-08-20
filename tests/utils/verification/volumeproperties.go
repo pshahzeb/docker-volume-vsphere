@@ -45,7 +45,8 @@ func GetVMAttachedToVolUsingDockerCli(volName string, hostname string) string {
 
 // GetVMAttachedToVolUsingAdminCli returns attached to vm field of volume using admin cli
 func GetVMAttachedToVolUsingAdminCli(volName string, hostname string) string {
-	cmd := admincli.ListVolumes + " 2>/dev/null | grep " + volName + " | awk -v OFS='\t' '{print $1, $9}'"
+	// Print the Volume and Attached-to field
+	cmd := admincli.ShortListVolumes + " 2>/dev/null | grep " + volName + " | awk -v OFS='\t' '{print $1, $4}'"
 	op, _ := ssh.InvokeCommand(hostname, cmd)
 	volProps := strings.Fields(op)
 	if op == "" {
