@@ -83,7 +83,7 @@ func GetVolumeProperties(volumeName, hostName string) []string {
 // IsVolumeAvailableOnESX returns true if the given volume is available
 // on the specified ESX
 func IsVolumeAvailableOnESX(hostName string, reqVol string) bool {
-	cmd := admincli.ListVolumes + " 2>/dev/null | awk -v OFS='\t' '{print $1}' | sed '1,2d' "
+	cmd := admincli.ShortListVolumes + " 2>/dev/null | awk -v OFS='\t' '{print $1}' | sed '1,2d' "
 	op, _ := ssh.InvokeCommand(hostName, cmd)
 
 	if strings.Contains(op, reqVol) != true {

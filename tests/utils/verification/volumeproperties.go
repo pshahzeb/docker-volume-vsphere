@@ -45,20 +45,19 @@ func GetVMAttachedToVolUsingDockerCli(volName string, hostname string) string {
 
 // GetVMAttachedToVolUsingAdminCli returns attached to vm field of volume using admin cli
 func GetVMAttachedToVolUsingAdminCli(volName string, hostname string) string {
-	// Print the Volume and Attached-to field
-	cmd := admincli.ShortListVolumes + " 2>/dev/null | grep " + volName + " | awk -v OFS='\t' '{print $1, $4}'"
+	cmd := admincli.ShortListVolumes + " 2>/dev/null | grep " + volName
 	op, _ := ssh.InvokeCommand(hostname, cmd)
 	volProps := strings.Fields(op)
 	if op == "" {
 		log.Printf("Null value is returned by admin cli when looking for attached to vm field for volume %s ", volName)
 		return op
 	}
-	if len(volProps) != 2 {
-		log.Fatalf("Admin cli output is expected to consist of two elements only - "+
-			"volume name and attached-to-vm status. Actual output %s ", op)
+	if len(volProps) != 4 {
+		log.Fatalf("Admin cli volume shortls output is expected to consist of four elements only"+
+			"Actual output %s ", op)
 	}
-	log.Printf("Volume %s status through admin cli is: %s", volName, volProps[1])
-	return volProps[1]
+	// Fourth string is the attached VM name
+	return volProps[3]
 }
 
 // CheckVolumeAvailability returns true if the given volume is available
