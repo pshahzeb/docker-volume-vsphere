@@ -319,7 +319,7 @@ Head to GitHub and author a new release add the changelog for the tag created.
 ```
 
 4. Head to [Bintray](https://bintray.com/vmware/product/vDVS/view) to publish signed VIB
-5. Push managed plugin to docker store
+5. Push vDVS & vFile managed plugin to docker store and windows plugin to bintray
 6. Add ```Downloads``` section with direct links; take [Release 0.13](https://github.com/vmware/docker-volume-vsphere/releases/tag/0.13) as the reference
 
 ### Publish vDVS managed plugin to Docker Store
@@ -336,7 +336,6 @@ DOCKER_HUB_REPO=vmware EXTRA_TAG= VERSION_TAG=<version_tag> make all
 2. Upload files at newly created version page
 3. Publish the newly uploaded VIB by marking it ```public```
 
-Update documentation following steps listed below.
 
 ## Cutting release steps for windows plugin
 ### Build windows plugin
@@ -359,6 +358,8 @@ To push plugin image
 DOCKER_HUB_REPO=vmware EXTRA_TAG= VERSION_TAG=latest make build-vfile
 DOCKER_HUB_REPO=vmware EXTRA_TAG= VERSION_TAG=<version_tag> make build-vfile
 ```
+
+Update documentation following steps listed below.
 
 ## Documentation
 
