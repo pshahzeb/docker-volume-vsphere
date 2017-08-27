@@ -125,7 +125,7 @@ func (d *VolumeDriver) List(r volume.Request) volume.Response {
 // GetVolume - return volume meta-data.
 func (d *VolumeDriver) GetVolume(name string) (map[string]interface{}, error) {
 	mdata, err := d.ops.Get(name)
-	if err != nil {
+	if err != nil && name != "" {
 		log.WithFields(log.Fields{"name": name, "error": err}).Error("Failed to get volume meta-data ")
 	}
 	return mdata, err
