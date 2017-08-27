@@ -124,7 +124,7 @@ func (d *VolumeDriver) List(r volume.Request) volume.Response {
 
 // GetVolume - return volume meta-data.
 func (d *VolumeDriver) GetVolume(name string) (map[string]interface{}, error) {
-	// Get for empty volume name is issued by docker when it is coming up.
+	// Get for empty volume name is issued by docker when it is coming up. Issue #1833
 	// Just return the error in such case.
 	if name == "" {
 		return nil, fmt.Errorf(" No volume with name as empty string exists")
